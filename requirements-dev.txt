@@ -1,0 +1,8 @@
+-r requirements.txt
+
+# Verified regression test runner.
+pytest==9.1.1
+
+# The runtime dependency chain installs Lite on Linux; local Windows tests
+# use the already validated version explicitly.
+milvus-lite==3.2.1; sys_platform == "win32"

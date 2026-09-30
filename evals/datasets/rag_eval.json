@@ -1,0 +1,14 @@
+[
+    {
+        "question": "公司的退款规则是什么？",
+        "expected_source": "售后规则"
+    },
+    {
+        "question": "商品出现质量问题可以怎么处理？",
+        "expected_source": "售后规则"
+    },
+    {
+        "question": "退款审核通过后多久到账？",
+        "expected_source": "售后规则"
+    }
+]

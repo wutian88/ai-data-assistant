@@ -1,0 +1,47 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: ai-data-assistant
+    container_name: ai-data-assistant
+    ports:
+      - "8000:8000"
+
+    # Load the private root configuration without copying it into the image.
+    env_file:
+      - ./.env
+    environment:
+      APP_DATA_DIR: /data
+
+    # Keep the existing Compose project and its persistent volume.
+    volumes:
+      - app-data:/data
+
+    # SQL initialization skips an existing database. Knowledge initialization
+    # requires both its database and successful initialization marker to skip.
+    command:
+      - sh
+      - -c
+      - |
+        python -m scripts.init_demo_db &&
+        python -m scripts.init_knowledge &&
+        exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+    # Liveness does not call the model or consume tokens.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2)"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  app-data:

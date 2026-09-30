@@ -1,0 +1,14 @@
+{
+  "question": "所有订单一共购买了多少件商品？",
+  "gold_sql": "SELECT SUM(quantity) FROM orders",
+  "gold_result": 9,
+  "agent_answer": "根据数据库记录，所有订单一共购买了 **9** 件商品。",
+  "usage": {
+    "input_tokens": 2984,
+    "output_tokens": 385,
+    "total_tokens": 3369,
+    "reasoning_tokens": 279
+  },
+  "latency_seconds": 9.953,
+  "answer_correct": null
+}

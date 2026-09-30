@@ -1,0 +1,51 @@
+# Private configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python environments and generated files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Persistent runtime data, including Milvus directories ending in .db
+data/
+*.db
+*.db/
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+.milvus*_initialized
+chroma_db/
+rag_chroma_db/
+
+# Generated logs and evaluation reports
+*.log
+*.log.*
+evals/reports/
+
+# Local learning material and independent repositories are not the application
+learning_archive/
+day*/
+review/
+ai-english/
+HowToLiveBetter/
+/test.py
+
+# Scratch files
+*.tmp
+*.bak

@@ -1,0 +1,14 @@
+{
+  "question": "现在一共有多少笔订单？",
+  "gold_sql": "SELECT COUNT(*) FROM orders",
+  "gold_result": 5,
+  "agent_answer": "目前一共有 **5** 笔订单。",
+  "usage": {
+    "input_tokens": 2914,
+    "output_tokens": 171,
+    "total_tokens": 3085,
+    "reasoning_tokens": 75
+  },
+  "latency_seconds": 7.422,
+  "answer_correct": null
+}

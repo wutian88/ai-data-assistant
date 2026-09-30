@@ -1,0 +1,22 @@
+[
+    {
+        "question": "公司的退款规则是什么？",
+        "expected_route": "rag"
+    },
+    {
+        "question": "商品出现质量问题可以怎么处理？",
+        "expected_route": "rag"
+    },
+    {
+        "question": "现在一共有多少订单？",
+        "expected_route": "sql"
+    },
+    {
+        "question": "帮我查询一下订单数量",
+        "expected_route": "sql"
+    },
+    {
+        "question": "帮我看看那个东西",
+        "expected_route": "fallback"
+    }
+]

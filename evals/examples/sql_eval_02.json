@@ -1,0 +1,14 @@
+{
+  "question": "数据库一共有多少位用户？",
+  "gold_sql": "SELECT COUNT(*) FROM users",
+  "gold_result": 4,
+  "agent_answer": "根据数据库中的 `users` 表数据，一共有 **4** 位用户。",
+  "usage": {
+    "input_tokens": 2897,
+    "output_tokens": 353,
+    "total_tokens": 3250,
+    "reasoning_tokens": 250
+  },
+  "latency_seconds": 6.387,
+  "answer_correct": null
+}

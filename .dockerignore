@@ -1,0 +1,31 @@
+# The build context contains only the files needed by the runtime image.
+# Tests, evaluations, archives, unrelated repositories and local data stay out.
+*
+!Dockerfile
+!requirements.txt
+!app/
+!app/**
+!scripts/
+!scripts/__init__.py
+!scripts/init_demo_db.py
+!scripts/init_knowledge.py
+
+# Keep private/generated files out even if they appear inside runtime folders.
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/__pycache__/
+**/*.py[cod]
+**/*.db
+**/*.db/**
+**/*.db-*
+**/*.sqlite
+**/*.sqlite-*
+**/*.sqlite3
+**/*.sqlite3-*
+**/.milvus*_initialized
+**/*.log
+**/*.log.*
+**/data/
+**/data/**
