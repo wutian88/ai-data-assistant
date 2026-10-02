@@ -1,0 +1,99 @@
+{
+  "dataset_version": "portfolio-v2",
+  "seed": 42,
+  "reference_date": "2026-10-01",
+  "recent_days_inclusive": 30,
+  "notes": [
+    "Time windows use a fixed demonstration observation date.",
+    "Amount is estimated from current product prices and is not historical revenue.",
+    "Gold rows are calculated against the actual database through the safe SQL tool."
+  ],
+  "cases": [
+    {
+      "id": "user_count",
+      "question": "数据库一共有多少位用户？",
+      "gold_sql": "SELECT COUNT(*) FROM users"
+    },
+    {
+      "id": "product_count",
+      "question": "数据库一共有多少种商品？",
+      "gold_sql": "SELECT COUNT(*) FROM products"
+    },
+    {
+      "id": "order_count",
+      "question": "数据库一共有多少笔订单？",
+      "gold_sql": "SELECT COUNT(*) FROM orders"
+    },
+    {
+      "id": "quantity_total",
+      "question": "所有订单（包含取消订单）一共购买了多少件商品？",
+      "gold_sql": "SELECT SUM(quantity) FROM orders"
+    },
+    {
+      "id": "users_by_city",
+      "question": "各城市分别有多少位用户？按人数从多到少排列。",
+      "gold_sql": "SELECT city, COUNT(*) AS user_count FROM users GROUP BY city ORDER BY user_count DESC, city"
+    },
+    {
+      "id": "orders_by_status",
+      "question": "各订单状态分别有多少笔订单？",
+      "gold_sql": "SELECT status, COUNT(*) AS order_count FROM orders GROUP BY status ORDER BY order_count DESC, status"
+    },
+    {
+      "id": "orders_by_city",
+      "question": "各城市的用户分别产生了多少笔订单？包含所有订单状态，按订单数从多到少排列。",
+      "gold_sql": "SELECT u.city, COUNT(*) AS order_count FROM orders AS o JOIN users AS u ON o.user_id = u.id GROUP BY u.city ORDER BY order_count DESC, u.city"
+    },
+    {
+      "id": "recent_order_count",
+      "question": "以2026-10-01为观察日，最近30天（含观察日）一共有多少笔订单？",
+      "gold_sql": "SELECT COUNT(*) FROM orders WHERE created_at >= '2026-09-02' AND created_at < '2026-10-02'",
+      "time_basis": "2026-09-02 through 2026-10-01 inclusive"
+    },
+    {
+      "id": "recent_new_users",
+      "question": "以2026-10-01为观察日，最近30天（含观察日）新增了多少位用户？",
+      "gold_sql": "SELECT COUNT(*) FROM users WHERE created_at >= '2026-09-02' AND created_at < '2026-10-02'",
+      "time_basis": "2026-09-02 through 2026-10-01 inclusive"
+    },
+    {
+      "id": "estimated_non_cancelled_amount",
+      "question": "排除取消订单，按当前商品价格估算所有订单的总金额是多少？请说明不是历史成交金额。",
+      "gold_sql": "SELECT ROUND(SUM(o.quantity * p.price), 2) FROM orders AS o JOIN products AS p ON o.product_id = p.id WHERE o.status != 'cancelled'",
+      "amount_basis": "quantity * current products.price; excludes cancelled; not historical sale price"
+    },
+    {
+      "id": "monthly_estimated_amount",
+      "question": "排除取消订单，按月份统计基于当前商品价格估算的订单金额，并按月份排列。",
+      "gold_sql": "SELECT strftime('%Y-%m', o.created_at) AS month, ROUND(SUM(o.quantity * p.price), 2) AS estimated_amount FROM orders AS o JOIN products AS p ON o.product_id = p.id WHERE o.status != 'cancelled' GROUP BY strftime('%Y-%m', o.created_at) ORDER BY month",
+      "amount_basis": "quantity * current products.price; excludes cancelled; not historical sale price"
+    },
+    {
+      "id": "top5_products_by_quantity",
+      "question": "排除取消订单，销量最高的前5种商品是哪些？按购买件数排名，相同件数按商品ID排列。",
+      "gold_sql": "SELECT p.id, p.name, SUM(o.quantity) AS total_quantity FROM orders AS o JOIN products AS p ON o.product_id = p.id WHERE o.status != 'cancelled' GROUP BY p.id, p.name ORDER BY total_quantity DESC, p.id LIMIT 5"
+    },
+    {
+      "id": "estimated_amount_by_category",
+      "question": "排除取消订单，按商品类别统计基于当前商品价格估算的订单金额，按金额从高到低排列。",
+      "gold_sql": "SELECT p.category, ROUND(SUM(o.quantity * p.price), 2) AS estimated_amount FROM orders AS o JOIN products AS p ON o.product_id = p.id WHERE o.status != 'cancelled' GROUP BY p.category ORDER BY estimated_amount DESC, p.category",
+      "amount_basis": "quantity * current products.price; excludes cancelled; not historical sale price"
+    },
+    {
+      "id": "beijing_user_count",
+      "question": "北京一共有多少位用户？",
+      "gold_sql": "SELECT COUNT(*) FROM users WHERE city = '北京'"
+    },
+    {
+      "id": "top_product_by_estimated_amount",
+      "question": "排除取消订单，按当前商品价格估算，订单金额最高的商品是哪一种？请说明不是历史销售额。",
+      "gold_sql": "SELECT p.id, p.name, ROUND(SUM(o.quantity * p.price), 2) AS estimated_amount FROM orders AS o JOIN products AS p ON o.product_id = p.id WHERE o.status != 'cancelled' GROUP BY p.id, p.name ORDER BY estimated_amount DESC, p.id LIMIT 1",
+      "amount_basis": "quantity * current products.price; excludes cancelled; not historical sale price"
+    },
+    {
+      "id": "quantity_by_category",
+      "question": "排除取消订单，各类商品分别销售了多少件？按购买件数从高到低排列。",
+      "gold_sql": "SELECT p.category, SUM(o.quantity) AS total_quantity FROM orders AS o JOIN products AS p ON o.product_id = p.id WHERE o.status != 'cancelled' GROUP BY p.category ORDER BY total_quantity DESC, p.category"
+    }
+  ]
+}

@@ -16,6 +16,7 @@ RUN pip install \
 # Configuration is injected at runtime; persistent databases live in /data.
 COPY app/ ./app/
 COPY scripts/__init__.py scripts/init_demo_db.py scripts/init_knowledge.py ./scripts/
+COPY data/knowledge/ ./data/knowledge/
 
 EXPOSE 8000
 

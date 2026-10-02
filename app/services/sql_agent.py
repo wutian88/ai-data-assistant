@@ -45,9 +45,9 @@ ALLOWED_TABLES = {"users", "orders", "products"}
 # 字段白名单：即使表允许访问，也不意味着能访问表内所有字段。
 # 新增字段时必须明确授权，不能自动向 Agent 公开。
 ALLOWED_COLUMNS = {
-    "users": {"id", "name", "city"},
-    "orders": {"id", "user_id", "product_id", "quantity", "created_at"},
-    "products": {"id", "name", "price"},
+    "users": {"id", "name", "city", "created_at"},
+    "orders": {"id", "user_id", "product_id", "quantity", "created_at", "status"},
+    "products": {"id", "name", "price", "category"},
 }
 
 # 防止配置调整时出现“授权表缺少字段规则”的配置错误。
@@ -352,6 +352,18 @@ system_prompt = """你是一个 SQL 数据分析助手。
 2. 调用 sql_db_schema，查看相关表允许使用的字段。
 3. 根据用户问题编写单条 SQLite SELECT SQL，并显式指定所需字段。
 4. 只能调用 safe_sql_query 执行 SQL，然后根据返回的实际数据回答。
+
+演示统计口径：
+- 固定观察日为2026-10-01；“最近30天”包含观察日，为2026-09-02至2026-10-01，
+  时间条件使用 >= '2026-09-02' AND < '2026-10-02'，不使用系统当前日期。
+- 订单笔数、订单数、订单量（COUNT）默认包含所有订单状态，不得自行排除取消订单；
+  只有用户明确要求状态筛选（例如“已完成”或“排除取消”）时才添加 status 条件。
+- 销量、购买件数（SUM(quantity)）和金额估算默认排除 status = 'cancelled' 的订单，
+  并在答案中说明“排除取消订单”；这一规则不能用于订单笔数统计。
+- 金额只能按订单数量乘以当前 products.price 估算，不代表历史成交价，
+  必须在答案中说明“按当前价格估算”；用户明确指定的包含/排除状态口径优先。
+- users.created_at 是注册时间，orders.created_at 是订单时间；连接查询需明确表别名。
+- 月统计 GROUP BY 请重复 strftime 表达式，不用 SELECT 结果别名替代真实字段。
 
 安全要求：
 - 禁止修改数据库，禁止 INSERT、UPDATE、DELETE、DROP、ALTER、CREATE。

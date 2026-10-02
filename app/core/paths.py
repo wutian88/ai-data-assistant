@@ -12,6 +12,9 @@ ENV_PATH = PROJECT_ROOT / ".env"
 ENV_FILE = ENV_PATH
 load_dotenv(ENV_PATH, override=False)
 
+# Versioned input documents live with the source, not in the runtime volume.
+KNOWLEDGE_DIR = PROJECT_ROOT / "data" / "knowledge"
+
 APP_DATA_DIR = os.getenv("APP_DATA_DIR")
 DATA_DIR = Path(APP_DATA_DIR).expanduser() if APP_DATA_DIR else PROJECT_ROOT / "data"
 if not DATA_DIR.is_absolute():

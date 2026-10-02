@@ -1,0 +1,46 @@
+name: Offline regression
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONIOENCODING: utf-8
+      DASHSCOPE_API_KEY: offline-dashscope-key
+      OPENAI_API_KEY: offline-openai-key
+      DEEPSEEK_API_KEY: offline-deepseek-key
+      APP_API_KEY: offline-app-key
+      DAY19_USER_A_KEY: offline-user-a-key
+      DAY19_USER_B_KEY: offline-user-b-key
+      LANGSMITH_TRACING: 'false'
+      LANGCHAIN_TRACING: 'false'
+      LANGCHAIN_TRACING_V2: 'false'
+      OTEL_SDK_DISABLED: 'true'
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: 'false'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            requirements-ui.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt -r requirements-ui.txt
+      - name: Run offline pytest
+        run: python -m pytest tests -p no:cacheprovider
+      - name: Run eight-module offline regression
+        run: python -m scripts.run_regression

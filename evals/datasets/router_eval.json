@@ -1,22 +1,42 @@
 [
-    {
-        "question": "公司的退款规则是什么？",
-        "expected_route": "rag"
-    },
-    {
-        "question": "商品出现质量问题可以怎么处理？",
-        "expected_route": "rag"
-    },
-    {
-        "question": "现在一共有多少订单？",
-        "expected_route": "sql"
-    },
-    {
-        "question": "帮我查询一下订单数量",
-        "expected_route": "sql"
-    },
-    {
-        "question": "帮我看看那个东西",
-        "expected_route": "fallback"
-    }
+  {
+    "question": "公司的退款规则是什么？",
+    "expected_route": "rag"
+  },
+  {
+    "question": "商品出现质量问题可以怎么处理？",
+    "expected_route": "rag"
+  },
+  {
+    "question": "现在一共有多少订单？",
+    "expected_route": "sql"
+  },
+  {
+    "question": "帮我查询一下订单数量",
+    "expected_route": "sql"
+  },
+  {
+    "question": "帮我看看那个东西",
+    "expected_route": "fallback"
+  },
+  {
+    "question": "各城市的用户分别产生了多少笔订单？包含所有订单状态，按订单数从多到少排列。",
+    "expected_route": "sql"
+  },
+  {
+    "question": "以2026-10-01为观察日，最近30天（含观察日）一共有多少笔订单？",
+    "expected_route": "sql"
+  },
+  {
+    "question": "以2026-10-01为观察日，最近30天（含观察日）新增了多少位用户？",
+    "expected_route": "sql"
+  },
+  {
+    "question": "排除取消订单，按月份统计基于当前商品价格估算的订单金额，并按月份排列。",
+    "expected_route": "sql"
+  },
+  {
+    "question": "排除取消订单，销量最高的前5种商品是哪些？按购买件数排名，相同件数按商品ID排列。",
+    "expected_route": "sql"
+  }
 ]

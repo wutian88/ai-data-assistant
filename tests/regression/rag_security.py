@@ -1,7 +1,20 @@
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
 from langchain_core.documents import Document
+
+# Replace the import-time vector-store dependency before loading the real RAG
+# function. This suite needs neither Milvus startup nor embedding calls.
+vector_store = ModuleType("app.services.vector_store")
+
+
+def unmocked_retrieval(*args, **kwargs):
+    raise AssertionError("RAG regression retrieval must be explicitly mocked")
+
+
+vector_store.retriever = SimpleNamespace(invoke=unmocked_retrieval)
+sys.modules["app.services.vector_store"] = vector_store
 
 from app.services import rag as rag_service
 

@@ -1,9 +1,10 @@
-import os
 import subprocess
 import sys
 import time
 
 from pathlib import Path
+
+from tests.offline import regression_environment
 
 
 # ============================================================
@@ -34,13 +35,14 @@ TEST_MODULES = [
 # ============================================================
 
 def run_tests():
+    with regression_environment() as env:
+        _run_tests(env)
+
+
+def _run_tests(env):
 
     passed = 0
     failed = []
-
-    # 避免 Windows 下的输出编码问题
-    env = os.environ.copy()
-    env["PYTHONIOENCODING"] = "utf-8"
 
     for module in TEST_MODULES:
 

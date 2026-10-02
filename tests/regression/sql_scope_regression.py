@@ -85,6 +85,27 @@ def main() -> None:
     )
     must_allow("COUNT(*)", "SELECT COUNT(*) FROM orders")
     must_allow(
+        "限定订单日期的城市统计",
+        "SELECT u.city, COUNT(*) AS total FROM users u JOIN orders o ON u.id = o.user_id "
+        "WHERE o.created_at >= '2026-09-02' AND o.created_at < '2026-10-02' "
+        "GROUP BY u.city ORDER BY total DESC, u.city",
+    )
+    must_allow(
+        "月统计重复分组表达式",
+        "SELECT strftime('%Y-%m', o.created_at) AS month, SUM(o.quantity) AS total "
+        "FROM orders o GROUP BY strftime('%Y-%m', o.created_at) ORDER BY month",
+    )
+    must_block(
+        "同名注册日期和订单日期必须限定表",
+        "SELECT created_at FROM users u JOIN orders o ON u.id = o.user_id",
+        "歧义",
+    )
+    must_block(
+        "GROUP BY 不通过投影别名授权",
+        "SELECT strftime('%Y-%m', created_at) AS month FROM orders GROUP BY month",
+        "禁止访问字段",
+    )
+    must_allow(
         "聚合结果别名仅用于 ORDER BY",
         "SELECT SUM(quantity) AS total FROM orders ORDER BY total",
     )

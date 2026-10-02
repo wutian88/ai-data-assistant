@@ -1,0 +1,4 @@
+# Optional HTTP presentation layer; backend runtime requirements stay separate.
+streamlit==1.64.0
+httpx==0.28.1
+python-dotenv==1.2.2

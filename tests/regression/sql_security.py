@@ -138,6 +138,31 @@ def main():
             "SELECT COUNT(*) FROM orders",
             True,
         ),
+        (
+            "允许用户注册时间",
+            "SELECT COUNT(*) FROM users WHERE created_at >= '2026-09-02' AND created_at < '2026-10-02'",
+            True,
+        ),
+        (
+            "允许订单状态分组",
+            "SELECT status, COUNT(*) FROM orders GROUP BY status",
+            True,
+        ),
+        (
+            "允许商品类别金额估算",
+            "SELECT p.category, ROUND(SUM(o.quantity * p.price), 2) AS amount FROM orders o JOIN products p ON o.product_id = p.id WHERE o.status != 'cancelled' GROUP BY p.category ORDER BY amount DESC",
+            True,
+        ),
+        (
+            "元数据仍禁止访问",
+            "SELECT value FROM demo_metadata",
+            False,
+        ),
+        (
+            "新增字段不能授权其他表字段",
+            "SELECT status FROM users",
+            False,
+        ),
     ]
 
     results = []

@@ -1,5 +1,4 @@
 """Run the eight original regression modules with their existing entry points."""
-import os
 import subprocess
 import sys
 
@@ -9,13 +8,11 @@ from scripts.run_regression import PROJECT_ROOT, TEST_MODULES
 
 
 @pytest.mark.parametrize("module", TEST_MODULES)
-def test_regression_module(module: str) -> None:
-    env = os.environ.copy()
-    env["PYTHONIOENCODING"] = "utf-8"
+def test_regression_module(module: str, offline_env) -> None:
     result = subprocess.run(
         [sys.executable, "-m", module],
         cwd=PROJECT_ROOT,
-        env=env,
+        env=offline_env,
         capture_output=True,
         text=True,
         encoding="utf-8",

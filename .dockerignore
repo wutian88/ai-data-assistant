@@ -29,3 +29,8 @@
 **/*.log.*
 **/data/
 **/data/**
+
+# Only versioned Markdown input is included; runtime databases stay excluded.
+!data/
+!data/knowledge/
+!data/knowledge/**/*.md

@@ -21,7 +21,11 @@ __pycache__/
 Thumbs.db
 
 # Persistent runtime data, including Milvus directories ending in .db
-data/
+/data/**
+!/data/
+!/data/knowledge/
+!/data/knowledge/**/
+!/data/knowledge/**/*.md
 *.db
 *.db/
 *.db-*
