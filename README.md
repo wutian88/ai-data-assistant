@@ -375,3 +375,16 @@ README.md
 - Token usage 是可观测子集，缺失部分保持未知，不用于直接核对账单。
 - 后端保留稳定基线的 API metadata 和兼容配置名；核心直接依赖已固定，但未完整锁定所有传递依赖。
 - 本轮 CI 工作流已通过本地隔离验证，远程 CI 在提交并推送后才会产生结果。
+## Demo
+
+### SQL Query
+
+Ask natural-language questions against structured business data.
+
+![SQL Demo](docs/images/sql-demo.png)
+
+### Knowledge Base RAG
+
+Retrieve policy documents and generate grounded answers with source attribution.
+
+![RAG Demo](docs/images/rag-demo.png)
