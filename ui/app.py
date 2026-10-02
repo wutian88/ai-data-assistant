@@ -31,7 +31,7 @@ def api_endpoint(base_url: str) -> str:
             and not any(char.isspace() for char in value)
         )
         # Accessing port also rejects malformed or out-of-range values.
-        parsed.port
+        _ = parsed.port  # Keep validation without Streamlit magic rendering the port.
     except ValueError:
         valid = False
     if not valid:
@@ -152,6 +152,12 @@ def seconds(value) -> str:
 
 
 st.set_page_config(page_title="AI Data Assistant", page_icon="💬", layout="wide")
+st.markdown("""
+<style>
+[data-testid="stMainBlockContainer"] {padding-top: 1.5rem; padding-bottom: 1rem;}
+[data-testid="stVerticalBlock"] {gap: 0.75rem;}
+</style>
+""", unsafe_allow_html=True)
 st.title("AI Data Assistant")
 st.caption("查询业务数据，或检索公司的政策知识库。")
 
@@ -167,7 +173,7 @@ with st.sidebar:
 
 st.caption("示例：北京用户有多少？ · 最近 30 天订单量是多少？ · 公司的退款规则是什么？")
 with st.form("question_form"):
-    question = st.text_area("问题", max_chars=1000, height=110, key="question")
+    question = st.text_area("问题", max_chars=1000, height=80, key="question")
     submitted = st.form_submit_button("发送", key="send")
 
 if submitted:
@@ -184,6 +190,8 @@ if payload is not None:
         st.error(f"服务返回业务错误：{payload.get('error_code') or '未知'}。{payload.get('error') or ''}")
     st.subheader("Answer")
     st.markdown(payload["answer"])
+    st.subheader("Sources")
+    st.caption(" · ".join(payload["sources"]) if payload["sources"] else "无来源")
     route_col, code_col, backend_col, token_col = st.columns(4)
     route_col.metric("Route", payload.get("route") or "未知")
     code_col.metric("Error Code", payload.get("error_code") or "无")
@@ -191,21 +199,17 @@ if payload is not None:
     observed = payload.get("observed_request_tokens") or {}
     total_tokens = observed.get("total") if isinstance(observed, dict) else None
     token_col.metric("Observed Tokens", str(total_tokens) if total_tokens is not None else "未知")
-    st.subheader("Sources")
-    if payload["sources"]:
-        for source in payload["sources"]:
-            st.write(source)
-    else:
-        st.caption("无来源")
-    st.subheader("Token Usage")
-    st.json({
-        "router_tokens": payload.get("router_tokens"),
-        "service_tokens": payload.get("service_tokens"),
-        "observed_request_tokens": payload.get("observed_request_tokens"),
-    })
+    with st.expander("Token Usage", expanded=False):
+        st.json({
+            "router_tokens": payload.get("router_tokens"),
+            "service_tokens": payload.get("service_tokens"),
+            "observed_request_tokens": payload.get("observed_request_tokens"),
+        })
 
-if st.session_state.get("last_request_id"):
-    st.subheader("Request ID")
-    st.code(st.session_state["last_request_id"], language=None)
-if "last_elapsed" in st.session_state:
-    st.caption(f"HTTP 请求耗时：{seconds(st.session_state['last_elapsed'])}")
+if st.session_state.get("last_request_id") or "last_elapsed" in st.session_state:
+    with st.expander("Request Details", expanded=False):
+        if st.session_state.get("last_request_id"):
+            st.caption("Request ID")
+            st.code(st.session_state["last_request_id"], language=None)
+        if "last_elapsed" in st.session_state:
+            st.caption(f"HTTP 请求耗时：{seconds(st.session_state['last_elapsed'])}")

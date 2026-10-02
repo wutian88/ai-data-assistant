@@ -75,10 +75,12 @@ def test_sql_response_and_http_contract(http_post):
     )
     assert page.session_state["last_response"]["answer"] == "数据库共有 1000 位用户。"
     assert "数据库共有 1000 位用户。" in [item.value for item in page.markdown]
+    assert not any(item.value.strip("`") == "9000" for item in page.markdown)
     assert metrics(page) == {"Route": "sql", "Error Code": "无", "后端耗时": "1.234 s", "Observed Tokens": "37"}
     assert page.code[0].value == "ui-request-123"
     assert json.loads(page.json[0].value)["service_tokens"]["total"] == 25
     assert any("HTTP 请求耗时" in item.value for item in page.caption)
+    assert "无来源" in [item.value for item in page.caption]
     assert "headers" not in page.session_state["last_response"]
 
 
@@ -90,7 +92,29 @@ def test_rag_sources_and_unknown_tokens(http_post):
     assert metrics(page)["Route"] == "rag"
     assert metrics(page)["Observed Tokens"] == "未知"
     assert metrics(page)["后端耗时"] == "未知"
-    assert "售后规则" in [item.value for item in page.markdown]
+    assert "售后规则" in [item.value for item in page.caption]
+
+
+def test_portfolio_layout_preserves_answer_and_collapses_details(http_post):
+    answer = "**退款政策**\n\n1. 签收后 7 天内申请。\n2. 审核通过后 3 个工作日退款。"
+    respond(http_post, payload("rag", ["售后规则", "会员规则"], answer=answer))
+    page = send(ui(), "公司的退款规则是什么？")
+    elements = list(page.main.children.values())
+    answer_index = next(i for i, element in enumerate(elements)
+                        if element.type == "subheader" and element.value == "Answer")
+    assert elements[answer_index + 1].value == answer
+    assert elements[answer_index + 2].value == "Sources"
+    assert elements[answer_index + 3].value == "售后规则 · 会员规则"
+    metric_row = elements[answer_index + 4]
+    columns = list(metric_row.children.values())
+    assert len(columns) == 4 and all(column.type == "column" for column in columns)
+    assert [column.metric[0].label for column in columns] == [
+        "Route", "Error Code", "后端耗时", "Observed Tokens",
+    ]
+    assert [item.label for item in page.expander] == ["Token Usage", "Request Details"]
+    assert all(not item.proto.expanded for item in page.expander)
+    assert json.loads(page.expander[0].json[0].value)["service_tokens"]["total"] == 25
+    assert page.expander[1].code[0].value == "ui-request-123"
 
 
 @pytest.mark.parametrize("question,base_url,key,message", [
