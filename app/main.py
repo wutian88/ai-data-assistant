@@ -36,6 +36,7 @@ from app.workflow.graph import (
 
 
 from app.api.sessions import create_session_router, session_lifespan
+from app.api.streaming import create_streaming_router
 from app.core.observability import build_observed_request_usage
 from app.core.paths import PROJECT_ROOT, ENV_PATH, SHOP_DB
 
@@ -376,6 +377,11 @@ class AskResponse(BaseModel):
     service_tokens: dict
 
     observed_request_tokens: dict
+
+
+app.include_router(create_streaming_router(
+    AskRequest, lambda: workflow, RECURSION_LIMIT, limit_rate, limit_concurrency,
+))
 
 
 # ============================================================

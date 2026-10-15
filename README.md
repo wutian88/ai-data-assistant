@@ -199,6 +199,55 @@ python -m evals.sql_answers
 
 输入位于 `evals/datasets/`，新报告写入 Git 忽略的 `evals/reports/`。SQL 数据集有 16 个 gold SQL 案例，已验证标注 SQL 的安全执行和实际结果；**这不等于 SQL Agent 的 16 题回答评分**。模型答案保留人工判断字段，不将关键词命中当作完整质量结论。`evals/examples/` 是旧 4 用户/5 订单数据的历史输出，不代表本次评测结果。
 
+本次离线开发没有调用付费模型；真实评测状态、题集条数和后续命令见 [评测说明](docs/evaluation.md)。
+
+### SSE 状态与答案分块
+
+`POST /ask/stream` 复用 `/ask` 的请求校验、`X-API-Key`、滑动窗口限流与并发保护；原 `/ask` 继续一次性返回 JSON。鉴权或超限在流开始前返回 HTTP 401 / 429。流开始后，节点失败用 `error` 事件表达，不再发送答案或 `done`。
+
+这是**阶段状态加最终答案分块推送**：使用图的节点更新发送状态，图完整运行成功后，再按最多 80 个字符分块发送答案。它不是模型 token 级流式，也不能缩短模型生成首个答案的等待时间。SQL、JSON 工具参数完整校验后执行，不向客户端发送它们的生成过程。
+
+每个事件以空行结束，`data` 是单行 JSON，文本内的换行会转义。事件顺序：
+
+```text
+event: status
+data: {"stage":"routing"}
+
+event: status
+data: {"stage":"retrieving"}
+
+event: delta
+data: {"text":"最终答案的一个片段"}
+
+event: done
+data: {"status":"completed","request_id":"...","route":"rag","sources":[],"usage":{"total_tokens":null}}
+
+```
+
+SQL 分支的第二个状态为 `querying`；fallback 没有检索/查询状态。`done.usage` 还含观测到的输入、输出和 reasoning Token，缺失的 Token 数为 `null`。失败终止事件为：
+
+```text
+event: error
+data: {"error_code":"MCP_TIMEOUT","request_id":"..."}
+
+```
+
+响应存活期间保留并发名额。客户端断开会取消图消费、关闭迭代器，并由原并发依赖的 `finally` 释放名额；这不保证厂商立即停止计算或计费。日志分别记录连接、首个 status、首个 delta 和结束时间，不记录明文凭据。当前保护仍仅单进程有效。
+
+零模型费用的本机演示（假凭据、临时数据、阻断外部网络；服务默认 60 秒后退出）：
+
+```sh
+python -m tests.manual.sse_offline_demo --port 8765
+```
+
+在另一个终端执行：
+
+```sh
+curl -N -H "Content-Type: application/json" -H "X-API-Key: offline-app-key" --data '{"question":"demo"}' http://127.0.0.1:8765/ask/stream
+```
+
+PowerShell 使用 `curl.exe`。真实服务改用自己的地址和凭据，调用可能产生模型费用。本轮只验证直接访问的本机 HTTP，不声称经过 Nginx 等代理验证或完成生产压测。`X-Accel-Buffering: no` 是响应提示，不能替代代理配置与实测。验证记录见 [SSE 验证](docs/sse_validation.md)。
+
 ## 10. Docker
 
 完整后端优先使用 Docker Desktop 的 Linux 容器。先按下一节填写根 `.env`，再在项目根目录执行：
