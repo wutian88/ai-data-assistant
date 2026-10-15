@@ -188,7 +188,7 @@ pytest 和 regression 使用测试专用隔离：无效测试凭证、项目外�
 
 2026-10-15 更新：SSE 与命名兼容改造后，本地 `python -B -m pytest -q -p no:cacheprovider` 为 **125 passed, 2 warnings in 51.31s**，独立八模块回归 8/8 通过。125 包含原有 97 项、13 项 SSE 检查及 15 项命名兼容检查；8 个回归包装已包含在总数中。两个警告来自现有依赖弃用提示。真实模型评测未运行；本机 SSE 验证使用阻断外部网络的 Mock 图。
 
-GitHub Actions 在 push、pull request 或手动触发时使用 Python 3.13，分别执行依赖安装、pytest、8 模块 regression；checkout/setup-python 固定版本 SHA，权限为 `contents: read`。本轮记录本地离线验证，未核验远程 Actions；远程状态以工作流运行页面和上方 badge 为准。历史本地验证记录不能代替远程执行结果。
+GitHub Actions 在 push、pull request 或手动触发时使用 Python 3.13，分别执行依赖安装、pytest、8 模块 regression；checkout/setup-python 固定版本 SHA，权限为 `contents: read`。2026-10-15 将 SSE 与命名兼容改造快进推送到 `main` 后，远程 `Offline regression` 已成功完成；远程状态仍以工作流运行页面和上方 badge 为准。历史本地验证记录不能代替远程执行结果。
 
 `tests/manual/` 和 `evals/` 不由默认 pytest 收集。模型效果评测需要真实服务，可能产生费用，单独手动运行：
 
