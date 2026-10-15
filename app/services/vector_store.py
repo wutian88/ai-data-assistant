@@ -11,11 +11,11 @@ from app.core.paths import MILVUS_DB
 # 1. Milvus Lite 数据库位置
 #
 # 本机开发：
-#   data/milvus_day14.db
+#   data/milvus.db
 #
 # Docker：
 #   APP_DATA_DIR=/data
-#   → /data/milvus_day14.db
+#   → /data/milvus.db
 # ============================================================
 
 MILVUS_DB.parent.mkdir(parents=True, exist_ok=True)

@@ -59,7 +59,7 @@ class SQLResult(BaseModel):
 # ============================================================
 
 mcp = MCPServer(
-    "Day18 Observable Business Server"
+    "AI Data Assistant Business Tools"
 )
 
 

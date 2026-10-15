@@ -12,7 +12,7 @@ def extract_usage(
     Router 的 reasoning 位于：
         output_token_details.reasoning
 
-    Day18 MCP Server 已把 reasoning 扁平化成：
+    MCP Server 已把 reasoning 扁平化成：
         reasoning_tokens
     """
 

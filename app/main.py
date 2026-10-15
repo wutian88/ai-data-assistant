@@ -106,7 +106,7 @@ DB_PATH = SHOP_DB
 
 app = FastAPI(
 
-    title="Day18 AI Application Service",
+    title="AI Data Assistant API",
 
     version="1.0.0",
     lifespan=session_lifespan,
@@ -1083,7 +1083,7 @@ async def ask(
     )
 
 # ============================================================
-# Day19：新增受保护会话路由（保留原 /ask 不变）
+# 线程接口：新增受保护会话路由（保留原 /ask 不变）
 # 此处放在所有鉴权、限流依赖定义之后，避免循环导入。
 # ============================================================
 app.include_router(

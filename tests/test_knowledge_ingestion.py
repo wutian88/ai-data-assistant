@@ -83,8 +83,8 @@ def sandbox(tmp_path, monkeypatch):
     knowledge.mkdir()
     policy = knowledge / "policy.md"
     policy.write_text("# Policy\n\nDemo business facts.", encoding="utf-8")
-    database = tmp_path / "runtime" / "milvus_day14.db"
-    marker = database.parent / ".milvus_day14_initialized"
+    database = tmp_path / "runtime" / "milvus.db"
+    marker = database.parent / ".milvus_initialized"
     monkeypatch.setattr(initializer, "KNOWLEDGE_DIR", knowledge)
     monkeypatch.setattr(initializer, "MILVUS_DB", database)
     monkeypatch.setattr(initializer, "INIT_MARKER", marker)

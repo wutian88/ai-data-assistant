@@ -19,8 +19,8 @@ jobs:
       OPENAI_API_KEY: offline-openai-key
       DEEPSEEK_API_KEY: offline-deepseek-key
       APP_API_KEY: offline-app-key
-      DAY19_USER_A_KEY: offline-user-a-key
-      DAY19_USER_B_KEY: offline-user-b-key
+      SESSION_USER_A_KEY: offline-user-a-key
+      SESSION_USER_B_KEY: offline-user-b-key
       LANGSMITH_TRACING: 'false'
       LANGCHAIN_TRACING: 'false'
       LANGCHAIN_TRACING_V2: 'false'

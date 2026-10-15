@@ -186,7 +186,9 @@ pytest 和 regression 使用测试专用隔离：无效测试凭证、项目外�
 
 96 是 pytest 用例数量，不是所有原脚本内部断言的总数，也不是模型正确率。
 
-GitHub Actions 在 push、pull request 或手动触发时使用 Python 3.13，分别执行依赖安装、pytest、8 模块 regression；checkout/setup-python 固定版本 SHA，权限为 `contents: read`。**本轮未 commit/push，远程 Actions 尚未执行**；上方 badge 在工作流发布后显示真实远程状态。本地 Windows 和断网 Linux 验证已通过。
+2026-10-15 更新：SSE 与命名兼容改造后，本地 `python -B -m pytest -q -p no:cacheprovider` 为 **125 passed, 2 warnings in 51.31s**，独立八模块回归 8/8 通过。125 包含原有 97 项、13 项 SSE 检查及 15 项命名兼容检查；8 个回归包装已包含在总数中。两个警告来自现有依赖弃用提示。真实模型评测未运行；本机 SSE 验证使用阻断外部网络的 Mock 图。
+
+GitHub Actions 在 push、pull request 或手动触发时使用 Python 3.13，分别执行依赖安装、pytest、8 模块 regression；checkout/setup-python 固定版本 SHA，权限为 `contents: read`。本轮记录本地离线验证，未核验远程 Actions；远程状态以工作流运行页面和上方 badge 为准。历史本地验证记录不能代替远程执行结果。
 
 `tests/manual/` 和 `evals/` 不由默认 pytest 收集。模型效果评测需要真实服务，可能产生费用，单独手动运行：
 
@@ -233,6 +235,8 @@ data: {"error_code":"MCP_TIMEOUT","request_id":"..."}
 ```
 
 响应存活期间保留并发名额。客户端断开会取消图消费、关闭迭代器，并由原并发依赖的 `finally` 释放名额；这不保证厂商立即停止计算或计费。日志分别记录连接、首个 status、首个 delta 和结束时间，不记录明文凭据。当前保护仍仅单进程有效。
+
+当前没有专用的总流时限或发送超时，慢客户端可能长时间占用名额；MCP 工具调用超时不能代替流发送时限。`/threads` 暂无流式接口，Streamlit 仍使用 `/ask`，本轮演示通过 curl；真实 MCP 子进程在客户端断开时的清理未做专项实测。
 
 零模型费用的本机演示（假凭据、临时数据、阻断外部网络；服务默认 60 秒后退出）：
 
@@ -330,7 +334,7 @@ python -m streamlit run ui/app.py --server.address 127.0.0.1 --browser.gatherUsa
 | --- | --- |
 | `DASHSCOPE_API_KEY` | 聊天模型和 Embedding 服务；完整请求/知识初始化需要真实有效凭证 |
 | `APP_API_KEY` | 后端 `X-API-Key`，也供本机 UI 使用 |
-| `DAY19_USER_A_KEY`, `DAY19_USER_B_KEY` | 两个非空且不同的 Session 演示凭证；保留兼容配置名 |
+| `SESSION_USER_A_KEY`, `SESSION_USER_B_KEY` | 两个非空且不同的 Session 演示凭证；新部署使用这组名称 |
 | `API_BASE_URL` | UI 的后端地址，默认 `http://127.0.0.1:8000` |
 | `MAX_CONCURRENT_REQUESTS` | 单进程 AI 并发上限；示例 2，代码默认 4 |
 | `CONCURRENCY_WAIT_SECONDS` | 并发槽位等待时间，默认 0.2 秒 |
@@ -404,12 +408,18 @@ README.md
 | 运行文件/目录 | 用途 |
 | --- | --- |
 | `shop.db` | 合成业务数据和数据集元信息 |
-| `milvus_day14.db` | Milvus Lite；当前运行时表现为目录 |
-| `.milvus_day14_initialized` | 已验证成功的知识 fingerprint marker |
-| `day19_thread_owners.db` | Thread ownership |
-| `day19_session_checkpoints.db` | LangGraph checkpoint |
+| `milvus.db` | Milvus Lite；当前运行时表现为目录 |
+| `.milvus_initialized` | 已验证成功的知识 fingerprint marker |
+| `thread_owners.db` | Thread ownership |
+| `session_checkpoints.db` | LangGraph checkpoint |
 
 真实 `.env`、SQLite/WAL/SHM、Milvus 数据、日志、升级备份和生成评测报告均忽略；`data/knowledge/**/*.md` 是需要提交的源资料。
+
+### 旧部署命名兼容
+
+新部署使用 `SESSION_USER_A_KEY` / `SESSION_USER_B_KEY`。只有两个新变量都未设置时，才整对读取旧 `DAY19_USER_A_KEY` / `DAY19_USER_B_KEY`；新变量只设置一个、为空或重复时拒绝服务，不混合新旧身份。真实 `.env` 不由这次代码修改自动重写；Compose 仍用 `env_file` 原样注入，CI 与示例配置采用新名。
+
+新数据目录采用上表的项目名。Milvus 新名不存在而旧 `milvus_day14.db` 存在时继续原地使用旧库，marker 跟随选中的库使用 `.milvus_day14_initialized` 或 `.milvus_initialized`。线程归属库和 checkpoint 库成对选择：只有旧 `day19_thread_owners.db` / `day19_session_checkpoints.db` 存在时继续整对使用旧名；有完整新对时整对用新名，新旧都存在会记警告；新对不完整且存在旧数据时拒绝启动，需管理员确认数据布局。代码不自动删除或移动文件。上述旧字符串只保留在兼容路径、兼容测试及这段说明中。
 
 ## 14. Known Limitations
 
@@ -422,8 +432,8 @@ README.md
 - 知识重建不是零停机索引切换；修改文档后应在停止业务写入的维护窗口初始化，失败时不会保留成功 marker。
 - 固定日期使数据可复现，不能把“最近 30 天”解释成运行当天；当前价格估算不能冒充历史交易收入。
 - Token usage 是可观测子集，缺失部分保持未知，不用于直接核对账单。
-- 后端保留稳定基线的 API metadata 和兼容配置名；核心直接依赖已固定，但未完整锁定所有传递依赖。
-- 本轮 CI 工作流已通过本地隔离验证，远程 CI 在提交并推送后才会产生结果。
+- API 与工具 metadata 使用项目名，旧配置及数据文件名保留兼容读取；核心直接依赖已固定，但未完整锁定所有传递依赖。
+- 本轮未核验远程 CI 结果，需到 Actions 页面确认；本地测试通过不能代替远程执行。
 ## Demo
 
 ### SQL Query

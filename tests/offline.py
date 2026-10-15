@@ -28,8 +28,10 @@ FAKE_CREDENTIALS = {
     "HF_TOKEN": "offline-huggingface-key",
     "HUGGINGFACEHUB_API_TOKEN": "offline-huggingface-key",
     "APP_API_KEY": "offline-app-key",
-    "DAY19_USER_A_KEY": "offline-user-a-key",
-    "DAY19_USER_B_KEY": "offline-user-b-key",
+    "SESSION_USER_A_KEY": "offline-user-a-key",
+    "SESSION_USER_B_KEY": "offline-user-b-key",
+    "DAY19_USER_A_KEY": "offline-legacy-user-a-key",
+    "DAY19_USER_B_KEY": "offline-legacy-user-b-key",
     "LANGSMITH_API_KEY": "offline-langsmith-key",
     "LANGCHAIN_API_KEY": "offline-langchain-key",
 }

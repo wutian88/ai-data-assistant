@@ -10,6 +10,7 @@ services:
       - "8000:8000"
 
     # Load the private root configuration without copying it into the image.
+    # New deployments use SESSION_USER_A_KEY / SESSION_USER_B_KEY in this file.
     env_file:
       - ./.env
     environment:

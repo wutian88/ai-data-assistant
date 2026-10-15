@@ -23,7 +23,7 @@ router_model = model.with_structured_output(
 
 # ==========================================
 # 带原始 AIMessage 的 Router
-# Day18 用于读取 usage_metadata
+# 用于读取 usage_metadata
 # ==========================================
 
 router_model_with_raw = model.with_structured_output(
@@ -73,7 +73,7 @@ def route_question(
 
 
 # ==========================================
-# Day18 新增：
+# 可观测性：
 # 同时返回 route + token usage
 # ==========================================
 

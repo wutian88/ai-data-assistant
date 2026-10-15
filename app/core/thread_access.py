@@ -1,4 +1,4 @@
-"""Day19：thread_id 归属校验（独立权限层）。
+"""线程接口：thread_id 归属校验（独立权限层）。
 
 核心原则：
 1. thread_id 只是会话定位符，不是身份凭证。
@@ -6,7 +6,7 @@
 3. 在调用 LangGraph get_state / invoke / resume 之前，先调用 require_owner()。
 4. 新 thread_id 仅由服务器创建。该模块只登记归属关系，不创建 LangGraph checkpoint。
 
-此模块不修改 Day16、Day18 的 Graph，也不进行真实 LLM 调用。
+此模块不修改工作流定义，也不进行真实 LLM 调用。
 """
 
 import sqlite3

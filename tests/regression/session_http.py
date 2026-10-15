@@ -55,8 +55,8 @@ class SessionHTTPTests(unittest.TestCase):
         self.env = patch.dict(
             os.environ,
             {
-                "DAY19_USER_A_KEY": "test-A-very-long-unique-session-secret",
-                "DAY19_USER_B_KEY": "test-B-very-long-unique-session-secret",
+                "SESSION_USER_A_KEY": "test-A-very-long-unique-session-secret",
+                "SESSION_USER_B_KEY": "test-B-very-long-unique-session-secret",
             },
         )
         self.env.start()

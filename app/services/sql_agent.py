@@ -1,6 +1,6 @@
-"""Day14 SQL Agent：只读查询、白名单工具与可观测性。
+"""SQL Agent：只读查询、白名单工具与可观测性。
 
-Day19 安全改造：
+SQL 安全校验：
 1. SQL 执行必须经过 AST、表/字段白名单、LIMIT、超时及只读连接。
 2. 表列表和 Schema 仅返回显式授权的元数据，不暴露原生 Toolkit 工具。
 3. 继续保留原来的 sql_answer() / sql_answer_with_usage() 接口。
@@ -186,7 +186,7 @@ def validate_sql(query: str) -> str:
     if not isinstance(tree, exp.Select):
         raise ValueError("只允许 SELECT 查询")
 
-    # Day19 采取“默认拒绝”：目前没有实现完整的子查询作用域分析。
+    # 校验器采取“默认拒绝”：目前没有实现完整的子查询作用域分析。
     # 先禁用嵌套 SELECT（含相关子查询、派生表和标量子查询）与 CTE。
     # 否则内层 SELECT 的别名可能错误地授权外层未允许的字段。
     if tree.find(exp.With) is not None:
@@ -436,7 +436,7 @@ def collect_message_usage(messages: Sequence[Any]) -> TokenUsage:
 
 
 # ============================================================
-# 9. 对外接口：保持 Day14 / Day17 / Day18 的调用方式
+# 9. 对外接口：保留对外调用方式
 # ============================================================
 
 def sql_answer_with_usage(question: str) -> SQLAnswerWithUsage:
@@ -454,5 +454,5 @@ def sql_answer_with_usage(question: str) -> SQLAnswerWithUsage:
 
 
 def sql_answer(question: str) -> str:
-    """兼容 Day14 等旧调用方，仅返回字符串回答。"""
+    """兼容旧调用方，仅返回字符串回答。"""
     return sql_answer_with_usage(question)["answer"]

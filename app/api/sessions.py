@@ -1,10 +1,10 @@
-"""Day19：受保护的 LangGraph 会话 HTTP 接口。
+"""线程接口：受保护的 LangGraph 会话 HTTP 接口。
 
 设计边界：
 - APP_API_KEY 负责应用级访问；X-Session-Key 负责演示用的独立用户身份。
 - user_id 只能来自服务端凭证映射，不能让客户端填写。
 - 每次读取 / 执行 Graph 之前，都检查 thread_id 归属。
-- Day18 Graph 原文件不改：运行时使用相同 graph 定义，另行编译带 SQLite checkpointer 的实例。
+- 复用现有 Graph 定义：运行时使用相同 graph 定义，另行编译带 SQLite checkpointer 的实例。
 - 这是本地双用户教学版鉴权；正式项目应接真实登录系统/JWT 校验。
 """
 
@@ -32,8 +32,14 @@ SESSION_HEADER = APIKeyHeader(name="X-Session-Key", auto_error=False, scheme_nam
 
 def resolve_user_id(session_key: str | None) -> str:
     """凭证 -> 固定身份。缺失配置、凭证重复时直接拒绝服务。"""
-    key_a = os.getenv("DAY19_USER_A_KEY")
-    key_b = os.getenv("DAY19_USER_B_KEY")
+    key_a = os.getenv("SESSION_USER_A_KEY")
+    key_b = os.getenv("SESSION_USER_B_KEY")
+
+    # Select credentials as a pair. A partially configured new pair must fail
+    # closed rather than mixing identities with the legacy configuration.
+    if key_a is None and key_b is None:
+        key_a = os.getenv("DAY19_USER_A_KEY")
+        key_b = os.getenv("DAY19_USER_B_KEY")
 
     if not key_a or not key_b or secrets.compare_digest(key_a, key_b):
         # 配置错误是服务端错误，绝不能退化成匿名用户或信任请求体 user_id。
@@ -153,8 +159,8 @@ def create_session_router(
     limit_rate: Callable,
     limit_concurrency: Callable,
 ) -> APIRouter:
-    """用工厂注入 Day19 原有鉴权/限流依赖，避免模块间循环导入。"""
-    router = APIRouter(tags=["Day19 protected sessions"])
+    """用工厂注入现有鉴权/限流依赖，避免模块间循环导入。"""
+    router = APIRouter(tags=["Protected sessions"])
 
     async def authenticated_user(
         _app_key: str = Depends(verify_api_key),

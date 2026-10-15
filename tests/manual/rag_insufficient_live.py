@@ -16,7 +16,7 @@ UNRELATED_DOCUMENT = Document(
         "周末不办公。"
     ),
     metadata={
-        "source": "day19_unrelated_test"
+        "source": "unrelated_test"
     },
 )
 
