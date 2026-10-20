@@ -64,3 +64,19 @@ RATE_LIMIT_WINDOW_SECONDS = int(
         "60",
     )
 )
+
+# Request budget includes route classification plus the selected business path.
+# The MCP boundary remains 45s; individual provider calls are shorter.
+END_TO_END_TIMEOUT_SECONDS = float(os.getenv("END_TO_END_TIMEOUT_SECONDS", "90"))
+MODEL_CALL_TIMEOUT_SECONDS = float(os.getenv("MODEL_CALL_TIMEOUT_SECONDS", "20"))
+MODEL_RETRY_ATTEMPTS = int(os.getenv("MODEL_RETRY_ATTEMPTS", "2"))
+MCP_TIMEOUT_SECONDS = 45
+
+if END_TO_END_TIMEOUT_SECONDS <= 0 or MODEL_CALL_TIMEOUT_SECONDS <= 0:
+    raise RuntimeError("Request and model timeout settings must be positive")
+if MODEL_CALL_TIMEOUT_SECONDS < 20 or MODEL_CALL_TIMEOUT_SECONDS > 30:
+    raise RuntimeError("MODEL_CALL_TIMEOUT_SECONDS must be between 20 and 30")
+if MODEL_RETRY_ATTEMPTS < 1 or MODEL_RETRY_ATTEMPTS > 2:
+    raise RuntimeError("MODEL_RETRY_ATTEMPTS must be 1 or 2")
+if END_TO_END_TIMEOUT_SECONDS <= MCP_TIMEOUT_SECONDS + MODEL_CALL_TIMEOUT_SECONDS * MODEL_RETRY_ATTEMPTS + 1:
+    raise RuntimeError("END_TO_END_TIMEOUT_SECONDS must exceed the MCP and model retry budgets")

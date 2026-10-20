@@ -10,7 +10,8 @@ import anyio
 from fastapi import APIRouter, Depends, Request
 from starlette.responses import StreamingResponse
 
-from app.api.sessions import _build_initial_state
+from app.api.sessions import _build_initial_state, optional_authenticated_user
+from app.core.config import END_TO_END_TIMEOUT_SECONDS
 from app.core.observability import build_observed_request_usage
 
 logger = logging.getLogger(__name__)
@@ -50,9 +51,15 @@ class DisconnectAwareResponse(StreamingResponse):
                 await self.body_iterator.aclose()
 
 
-async def answer_events(workflow, question: str, request_id: str, recursion_limit: int):
+async def _answer_events_impl(
+    workflow,
+    question: str,
+    request_id: str,
+    recursion_limit: int,
+    user_id: str | None = None,
+):
     started = time.perf_counter()
-    state = _build_initial_state(question, request_id)
+    state = _build_initial_state(question, request_id, user_id)
     outcome = "cancelled"
     first_delta = None
     logger.info("[%s] stream connected | usage=null", request_id)
@@ -95,6 +102,9 @@ async def answer_events(workflow, question: str, request_id: str, recursion_limi
             "usage": build_observed_request_usage(state),
         })
         outcome = "completed"
+    except TimeoutError:
+        outcome = "timeout"
+        raise
     except Exception as exc:
         outcome = "error"
         logger.warning("[%s] stream failed | exception_type=%s", request_id, type(exc).__name__)
@@ -105,6 +115,27 @@ async def answer_events(workflow, question: str, request_id: str, recursion_limi
             request_id, outcome, time.perf_counter() - started, first_delta,
             json.dumps(build_observed_request_usage(state)),
         )
+
+
+async def answer_events(
+    workflow,
+    question: str,
+    request_id: str,
+    recursion_limit: int,
+    user_id: str | None = None,
+):
+    """Apply the same end-to-end budget to graph work and SSE delivery."""
+    try:
+        async with asyncio.timeout(END_TO_END_TIMEOUT_SECONDS):
+            async for event in _answer_events_impl(
+                workflow, question, request_id, recursion_limit, user_id,
+            ):
+                yield event
+    except TimeoutError:
+        yield sse_event("error", {
+            "error_code": "END_TO_END_TIMEOUT",
+            "request_id": request_id,
+        })
 
 
 def create_streaming_router(request_model, get_workflow: Callable, recursion_limit: int,
@@ -118,9 +149,13 @@ def create_streaming_router(request_model, get_workflow: Callable, recursion_lim
         _: None = Depends(limit_rate),
         # Keep the same guard until the response finishes or disconnects.
         __: None = Depends(limit_concurrency, scope="request"),
+        user_id: str | None = Depends(optional_authenticated_user),
     ):
         return DisconnectAwareResponse(
-            answer_events(get_workflow(), body.question, request.state.request_id, recursion_limit),
+            answer_events(
+                get_workflow(), body.question, request.state.request_id,
+                recursion_limit, user_id,
+            ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )

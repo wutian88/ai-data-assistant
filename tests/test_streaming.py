@@ -1,6 +1,7 @@
 """Production routing/guards and real ASGI cancellation, with no vendor calls."""
 import asyncio
 import json
+import secrets
 from types import SimpleNamespace
 
 import httpx
@@ -36,6 +37,7 @@ class FakeGraph:
             self.closed = True
 
     async def ainvoke(self, state, config):
+        self.initial = state
         return {**state, "route": self.route, "answer": ANSWER}
 
 
@@ -80,6 +82,7 @@ def test_stream_order_answer_and_no_tool_leak(service, route, stage, caplog):
     assert "SECRET SQL" not in response.text
     assert wire[-1][1]["usage"]["total_tokens"] is None
     assert service.graph.initial["question"] == "测试问题"
+    assert service.graph.initial["user_id"] is None
     assert service.graph.closed
     assert "first_status" in caplog.text and "first_delta" in caplog.text and "stream end" in caplog.text
     assert KEY not in caplog.text
@@ -123,6 +126,98 @@ def test_validation_and_existing_ask_contract(service):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/json")
     assert response.json()["answer"] == ANSWER
+    assert service.graph.initial["user_id"] is None
+
+
+def test_anonymous_rag_answers_but_sql_fails_closed_at_sql_node(service, monkeypatch):
+    from langgraph.graph import END, START, StateGraph
+    from app.workflow.graph import AppState, sql_node
+
+    rag_response = service.client.post(
+        "/ask",
+        headers={"X-API-Key": KEY},
+        json={"question": "公司的退款规则是什么？"},
+    )
+    assert rag_response.status_code == 200
+    assert rag_response.json()["route"] == "rag"
+    assert service.graph.initial["user_id"] is None
+
+    invalid_key_response = service.client.post(
+        "/ask",
+        headers={"X-API-Key": KEY, "X-Session-Key": "invalid"},
+        json={"question": "公司的退款规则是什么？"},
+    )
+    assert invalid_key_response.status_code == 401
+    assert service.graph.initial["user_id"] is None
+
+    graph = StateGraph(AppState)
+    graph.add_node("classify", lambda state: {"route": "sql"})
+    graph.add_node("sql", sql_node)
+    graph.add_edge(START, "classify")
+    graph.add_edge("classify", "sql")
+    graph.add_edge("sql", END)
+    monkeypatch.setattr(main, "workflow", graph.compile())
+
+    response = service.client.post(
+        "/ask",
+        headers={"X-API-Key": KEY},
+        json={"question": "订单统计"},
+    )
+    assert response.status_code == 200
+    assert response.json()["error_code"] == "SQL_IDENTITY_REQUIRED"
+
+    stream = events(service.client.post(
+        "/ask/stream", headers={"X-API-Key": KEY}, json={"question": "订单统计"},
+    ))
+    assert stream[-1][0] == "error"
+    assert stream[-1][1]["error_code"] == "SQL_IDENTITY_REQUIRED"
+
+    invalid_stream = service.client.post(
+        "/ask/stream",
+        headers={"X-API-Key": KEY, "X-Session-Key": "invalid"},
+        json={"question": "订单统计"},
+    )
+    assert invalid_stream.status_code == 401
+
+
+def test_valid_session_identity_is_attached_to_trusted_state(service, monkeypatch):
+    session_key_a = secrets.token_urlsafe(24)
+    session_key_b = secrets.token_urlsafe(24)
+    monkeypatch.setenv("SESSION_USER_A_KEY", session_key_a)
+    monkeypatch.setenv("SESSION_USER_B_KEY", session_key_b)
+    response = service.client.post(
+        "/ask",
+        headers={"X-API-Key": KEY, "X-Session-Key": session_key_a},
+        json={"question": "公司的退款规则是什么？"},
+    )
+    assert response.status_code == 200
+    assert service.graph.initial["user_id"] == "user_a"
+
+
+def test_end_to_end_budget_applies_to_json_and_sse(service, monkeypatch):
+    class SlowGraph(FakeGraph):
+        async def ainvoke(self, state, config):
+            await asyncio.Event().wait()
+
+        async def astream(self, state, config, stream_mode):
+            self.initial = state
+            yield {"classify": {"route": "rag"}}
+            await asyncio.Event().wait()
+
+    monkeypatch.setattr(main, "END_TO_END_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr("app.api.streaming.END_TO_END_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(main, "workflow", SlowGraph())
+
+    response = service.client.post("/ask", headers={"X-API-Key": KEY}, json={"question": "test"})
+    assert response.status_code == 504
+    assert response.json()["detail"] == "END_TO_END_TIMEOUT"
+
+    stream = events(service.client.post(
+        "/ask/stream", headers={"X-API-Key": KEY}, json={"question": "test"},
+    ))
+    assert stream[-1][0] == "error"
+    assert stream[-1][1]["error_code"] == "END_TO_END_TIMEOUT"
+    assert not main.ask_semaphore.locked()
 
 
 def test_real_langgraph_updates_use_the_same_wire_contract(service, monkeypatch):

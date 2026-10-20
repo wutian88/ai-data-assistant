@@ -4,7 +4,7 @@ import importlib.util
 import pytest
 from fastapi import HTTPException
 
-from app.api.sessions import resolve_user_id
+from app.api.sessions import resolve_optional_user_id, resolve_user_id
 from app.core import paths
 
 
@@ -33,6 +33,16 @@ def test_legacy_only_credentials_still_work(keys):
     keys.setenv("DAY19_USER_B_KEY", "old-b")
     assert resolve_user_id("old-a") == "user_a"
     assert resolve_user_id("old-b") == "user_b"
+
+
+def test_optional_request_identity_defers_missing_and_invalid_keys_to_sql_node(keys):
+    keys.setenv("SESSION_USER_A_KEY", "new-a")
+    keys.setenv("SESSION_USER_B_KEY", "new-b")
+    assert resolve_optional_user_id(None) is None
+    with pytest.raises(HTTPException) as error:
+        resolve_optional_user_id("invalid")
+    assert error.value.status_code == 401
+    assert resolve_optional_user_id("new-a") == "user_a"
 
 
 @pytest.mark.parametrize("a,b", [("new-a", None), ("", "new-b"), ("same", "same")])

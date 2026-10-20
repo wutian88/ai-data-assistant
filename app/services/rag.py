@@ -4,6 +4,7 @@ from langchain_core.messages import (
 )
 
 from app.core.llm import model
+from app.core.retries import merge_retry_usage, track_model_usage
 from .vector_store import retriever
 
 
@@ -117,15 +118,15 @@ def rag_answer_with_usage(
     )
 
     # ⑤ 调用模型
-    result = model.invoke(
-        messages
-    )
+    with track_model_usage() as retry_usage:
+        result = model.invoke(messages)
 
     # ⑥ 提取实际可观测到的 Token
     usage = (
         result.usage_metadata
         or {}
     )
+    usage = merge_retry_usage(usage, retry_usage)
 
     output_details = (
         usage.get("output_token_details")

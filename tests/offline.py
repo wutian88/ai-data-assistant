@@ -49,10 +49,14 @@ def child_environment(data_dir: Path | str, inherited=None) -> dict[str, str]:
                  "http_proxy", "https_proxy", "all_proxy", "no_proxy",
                  "LANGSMITH_ENDPOINT", "LANGCHAIN_ENDPOINT"):
         env.pop(name, None)
+    env.pop("APP_AUTHENTICATED_USER_ID", None)
     env.update(FAKE_CREDENTIALS)
     env.update({
         OFFLINE_FLAG: "1",
         "APP_DATA_DIR": str(Path(data_dir).resolve()),
+        "END_TO_END_TIMEOUT_SECONDS": "90",
+        "MODEL_CALL_TIMEOUT_SECONDS": "20",
+        "MODEL_RETRY_ATTEMPTS": "2",
         "PYTHONIOENCODING": "utf-8",
         "PYTHONDONTWRITEBYTECODE": "1",
         "LANGSMITH_TRACING": "false",

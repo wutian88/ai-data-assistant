@@ -9,8 +9,10 @@ import asyncio
 import os
 import secrets
 import tempfile
+import threading
 import unittest
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -18,6 +20,7 @@ from unittest.mock import patch
 from fastapi import FastAPI, HTTPException, Request, Security
 from fastapi.security import APIKeyHeader
 from fastapi.testclient import TestClient
+import httpx
 
 from app.api.sessions import create_session_router
 from app.core.thread_access import ThreadAccessStore
@@ -29,7 +32,12 @@ class FakeGraph:
     def __init__(self):
         self.get_calls = []
         self.invoke_calls = []
+        self.invoke_states = []
         self.saved = {}
+        self.block_next = False
+        self.raise_next = False
+        self.entered = threading.Event()
+        self.release = threading.Event()
 
     async def aget_state(self, config):
         tid = config["configurable"]["thread_id"]
@@ -39,6 +47,14 @@ class FakeGraph:
     async def ainvoke(self, state, config):
         tid = config["configurable"]["thread_id"]
         self.invoke_calls.append(tid)
+        self.invoke_states.append(state)
+        if self.raise_next:
+            self.raise_next = False
+            raise RuntimeError("synthetic graph failure")
+        if self.block_next:
+            self.entered.set()
+            await asyncio.to_thread(self.release.wait, 3)
+            self.block_next = False
         output = {
             **state,
             "route": "fallback",
@@ -52,11 +68,13 @@ class SessionHTTPTests(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmpdir.cleanup)
+        self.session_key_a = secrets.token_urlsafe(24)
+        self.session_key_b = secrets.token_urlsafe(24)
         self.env = patch.dict(
             os.environ,
             {
-                "SESSION_USER_A_KEY": "test-A-very-long-unique-session-secret",
-                "SESSION_USER_B_KEY": "test-B-very-long-unique-session-secret",
+                "SESSION_USER_A_KEY": self.session_key_a,
+                "SESSION_USER_B_KEY": self.session_key_b,
             },
         )
         self.env.start()
@@ -64,6 +82,7 @@ class SessionHTTPTests(unittest.TestCase):
 
         self.fake_graph = FakeGraph()
         app = FastAPI()
+        self.app = app
         app.state.thread_store = ThreadAccessStore(
             Path(self.tmpdir.name) / "owners.db"
         )
@@ -103,10 +122,7 @@ class SessionHTTPTests(unittest.TestCase):
     def headers(self, user="a", app_key="test-app-secret"):
         return {
             "X-API-Key": app_key,
-            "X-Session-Key": (
-                "test-A-very-long-unique-session-secret"
-                if user == "a" else "test-B-very-long-unique-session-secret"
-            ),
+            "X-Session-Key": self.session_key_a if user == "a" else self.session_key_b,
         }
 
     def new_thread(self):
@@ -126,8 +142,62 @@ class SessionHTTPTests(unittest.TestCase):
         )
         self.assertEqual(asked.status_code, 200, asked.text)
         self.assertEqual(self.fake_graph.invoke_calls, [tid])
+        self.assertEqual(self.fake_graph.invoke_states[0]["user_id"], "user_a")
+        self.assertFalse(self.app.state.thread_locks[tid].locked())
         state = self.client.get(f"/threads/{tid}", headers=self.headers("a"))
         self.assertEqual(state.json()["question"], "测试问题")
+
+    def test_thread_lock_releases_after_graph_exception(self):
+        tid = self.new_thread()
+        self.fake_graph.raise_next = True
+        with self.assertRaises(RuntimeError):
+            self.client.post(
+                f"/threads/{tid}/ask", headers=self.headers("a"),
+                json={"question": "first"},
+            )
+        self.assertFalse(self.app.state.thread_locks[tid].locked())
+        recovered = self.client.post(
+            f"/threads/{tid}/ask", headers=self.headers("a"),
+            json={"question": "retry after exception"},
+        )
+        self.assertEqual(recovered.status_code, 200, recovered.text)
+
+    def test_thread_lock_releases_after_request_cancellation(self):
+        tid = self.new_thread()
+
+        async def exercise():
+            entered = asyncio.Event()
+            cancelled = asyncio.Event()
+
+            class CancelGraph:
+                async def ainvoke(inner_self, state, config):
+                    entered.set()
+                    try:
+                        await asyncio.Event().wait()
+                    finally:
+                        cancelled.set()
+
+            self.app.state.session_graph = CancelGraph()
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=self.app), base_url="http://test"
+            ) as client:
+                task = asyncio.create_task(client.post(
+                    f"/threads/{tid}/ask", headers=self.headers("a"),
+                    json={"question": "cancel this request"},
+                ))
+                await asyncio.wait_for(entered.wait(), 3)
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+                self.assertTrue(cancelled.is_set())
+                self.assertFalse(self.app.state.thread_locks[tid].locked())
+                self.app.state.session_graph = FakeGraph()
+                recovered = await client.post(
+                    f"/threads/{tid}/ask", headers=self.headers("a"),
+                    json={"question": "after cancellation"},
+                )
+                self.assertEqual(recovered.status_code, 200, recovered.text)
+
+        asyncio.run(exercise())
 
     def test_foreign_user_blocked_before_touching_graph(self):
         tid = self.new_thread()
@@ -170,6 +240,27 @@ class SessionHTTPTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 422)
         self.assertEqual(self.fake_graph.invoke_calls, [])
+
+    def test_second_concurrent_thread_write_returns_409_immediately(self):
+        tid = self.new_thread()
+        self.fake_graph.block_next = True
+        headers = self.headers("a")
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            first = pool.submit(
+                self.client.post,
+                f"/threads/{tid}/ask",
+                headers=headers,
+                json={"question": "first"},
+            )
+            self.assertTrue(self.fake_graph.entered.wait(3), "first request did not reach graph")
+            second = self.client.post(
+                f"/threads/{tid}/ask", headers=headers, json={"question": "second"},
+            )
+            self.assertEqual(second.status_code, 409, second.text)
+            self.assertEqual(len(self.fake_graph.invoke_calls), 1)
+            self.fake_graph.release.set()
+            self.assertEqual(first.result(timeout=3).status_code, 200)
+        self.assertFalse(self.app.state.thread_locks[tid].locked())
 
 
 if __name__ == "__main__":

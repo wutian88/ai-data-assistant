@@ -4,7 +4,7 @@ import sqlglot
 
 from app.services.sql_agent import (
     MAX_ROWS,
-    safe_sql_query,
+    build_sql_tools,
     tools,
 )
 
@@ -19,6 +19,7 @@ def main():
     assert "safe_sql_query" in tool_names
 
     print("[PASS] 只能通过自定义安全工具执行 SQL")
+    safe_sql_query = build_sql_tools("user_a")[2]
 
     # 2. 正常数据库查询
     result = safe_sql_query.invoke({

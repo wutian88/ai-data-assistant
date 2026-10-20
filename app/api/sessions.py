@@ -9,6 +9,7 @@
 """
 
 import asyncio
+import anyio
 import os
 import secrets
 import time
@@ -23,6 +24,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.core.thread_access import ThreadAccessStore, ThreadNotFound
 from app.core.paths import DATA_DIR, THREAD_OWNERS_DB, CHECKPOINT_DB
+from app.core.config import END_TO_END_TIMEOUT_SECONDS
 
 
 # 测试身份：实际密钥必须放到项目根目录的 .env，不能提交到 Git。
@@ -56,6 +58,19 @@ def resolve_user_id(session_key: str | None) -> str:
     if matches_b:
         return "user_b"
     raise HTTPException(status_code=401, detail="Invalid session credentials")
+
+
+def resolve_optional_user_id(session_key: str | None) -> str | None:
+    """Allow missing identity for RAG; an explicitly supplied key must be valid."""
+    if session_key is None:
+        return None
+    return resolve_user_id(session_key)
+
+
+async def optional_authenticated_user(
+    session_key: str | None = Security(SESSION_HEADER),
+) -> str | None:
+    return resolve_optional_user_id(session_key)
 
 
 def storage_dir() -> Path:
@@ -133,11 +148,16 @@ def _require_owner(app: FastAPI, user_id: str, thread_id: str) -> None:
         raise HTTPException(status_code=404, detail="Thread not found") from exc
 
 
-def _build_initial_state(question: str, request_id: str) -> dict[str, Any]:
+def _build_initial_state(
+    question: str,
+    request_id: str,
+    user_id: str | None = None,
+) -> dict[str, Any]:
     """与旧 /ask 的 State 字段一致，避免破坏 Router/MCP 及 Token 统计。"""
     return {
         "request_id": request_id,
         "question": question,
+        "user_id": user_id,
         "route": None,
         "answer": "",
         "sources": [],
@@ -225,18 +245,25 @@ def create_session_router(
             thread_lock = request.app.state.thread_locks.setdefault(
                 thread_id, asyncio.Lock()
             )
+            if thread_lock.locked():
+                raise HTTPException(status_code=409, detail="Thread write already in progress")
+            await thread_lock.acquire()
 
         request_id = request.state.request_id
         start = time.perf_counter()
-        # 同一 thread_id 的写操作串行化，避免并发覆盖 Checkpoint。
-        async with thread_lock:
-            result = await request.app.state.session_graph.ainvoke(
-                _build_initial_state(body.question, request_id),
-                config={
-                    "configurable": {"thread_id": thread_id},
-                    "recursion_limit": request.app.state.session_recursion_limit,
-                },
-            )
+        try:
+            with anyio.fail_after(END_TO_END_TIMEOUT_SECONDS):
+                result = await request.app.state.session_graph.ainvoke(
+                    _build_initial_state(body.question, request_id, user_id),
+                    config={
+                        "configurable": {"thread_id": thread_id},
+                        "recursion_limit": request.app.state.session_recursion_limit,
+                    },
+                )
+        except TimeoutError as exc:
+            raise HTTPException(status_code=504, detail="END_TO_END_TIMEOUT") from exc
+        finally:
+            thread_lock.release()
 
         elapsed = time.perf_counter() - start
         from app.core.observability import build_observed_request_usage

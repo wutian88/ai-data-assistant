@@ -2,6 +2,7 @@ from typing import Literal, cast
 from pydantic import BaseModel
 
 from app.core.llm import model
+from app.core.retries import merge_retry_usage, track_model_usage
 
 
 class RouteResult(BaseModel):
@@ -88,10 +89,11 @@ def route_question_with_usage(
         question
     )
 
-    result = cast(
-        dict,
-        router_model_with_raw.invoke(prompt)
-    )
+    with track_model_usage() as retry_usage:
+        result = cast(
+            dict,
+            router_model_with_raw.invoke(prompt)
+        )
 
     parsed = cast(
         RouteResult,
@@ -104,5 +106,6 @@ def route_question_with_usage(
         raw.usage_metadata
         or {}
     )
+    usage = merge_retry_usage(usage, retry_usage)
 
     return parsed, usage

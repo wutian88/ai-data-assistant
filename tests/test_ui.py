@@ -1,6 +1,7 @@
 """Exercise the real Streamlit page with offline HTTP responses."""
 
 import json
+import secrets
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -11,6 +12,8 @@ from streamlit.testing.v1 import AppTest
 
 UI_FILE = Path(__file__).resolve().parents[1] / "ui" / "app.py"
 TEST_KEY = "ui-offline-test-credential"
+TEST_SESSION_KEY_A = secrets.token_urlsafe(24)
+TEST_SESSION_KEY_B = secrets.token_urlsafe(24)
 
 
 @pytest.fixture
@@ -18,6 +21,8 @@ def http_post(monkeypatch):
     # Never load a developer's .env or issue real model-backed HTTP requests.
     monkeypatch.setattr("dotenv.load_dotenv", lambda *args, **kwargs: None)
     monkeypatch.setenv("APP_API_KEY", TEST_KEY)
+    monkeypatch.setenv("SESSION_USER_A_KEY", TEST_SESSION_KEY_A)
+    monkeypatch.setenv("SESSION_USER_B_KEY", TEST_SESSION_KEY_B)
     monkeypatch.setenv("API_BASE_URL", "http://127.0.0.1:8000")
     post = Mock(side_effect=AssertionError("An offline UI test attempted unexpected HTTP"))
     monkeypatch.setattr(httpx, "post", post)
@@ -71,7 +76,8 @@ def test_sql_response_and_http_contract(http_post):
     http_post.assert_called_once_with(
         "http://127.0.0.1:9000/api/ask",
         json={"question": "数据库一共有多少位用户？"},
-        headers={"X-API-Key": TEST_KEY}, timeout=120, follow_redirects=False,
+        headers={"X-API-Key": TEST_KEY, "X-Session-Key": TEST_SESSION_KEY_A},
+        timeout=120, follow_redirects=False,
     )
     assert page.session_state["last_response"]["answer"] == "数据库共有 1000 位用户。"
     assert "数据库共有 1000 位用户。" in [item.value for item in page.markdown]
@@ -82,6 +88,26 @@ def test_sql_response_and_http_contract(http_post):
     assert any("HTTP 请求耗时" in item.value for item in page.caption)
     assert "无来源" in [item.value for item in page.caption]
     assert "headers" not in page.session_state["last_response"]
+
+
+def test_demo_identity_selector_sends_matching_session_key(http_post):
+    respond(http_post, payload())
+    page = ui()
+    assert page.selectbox(key="demo_user_id").value == "user_a"
+    page.selectbox(key="demo_user_id").select("user_b").run()
+    send(page, "数据库一共有多少位用户？")
+    assert http_post.call_args.kwargs["headers"]["X-Session-Key"] == TEST_SESSION_KEY_B
+
+
+def test_missing_session_credential_stops_ui_request(http_post, monkeypatch):
+    monkeypatch.delenv("SESSION_USER_A_KEY")
+    monkeypatch.delenv("SESSION_USER_B_KEY")
+    monkeypatch.delenv("DAY19_USER_A_KEY", raising=False)
+    monkeypatch.delenv("DAY19_USER_B_KEY", raising=False)
+    page = send(ui())
+    http_post.assert_not_called()
+    assert "Session Key" in page.error[0].value
+    assert metrics(page)["UI Error Code"] == "NO_SESSION_CREDENTIALS"
 
 
 def test_rag_sources_and_unknown_tokens(http_post):
@@ -183,11 +209,13 @@ def test_malformed_responses(http_post, response, message):
 
 
 def test_business_error_and_response_redaction(http_post):
-    respond(http_post, payload(error=f"Backend failed with {TEST_KEY}", error_code="MCP_ERROR"))
+    session_secret = TEST_SESSION_KEY_A
+    respond(http_post, payload(error=f"Backend failed with {TEST_KEY} and {session_secret}", error_code="MCP_ERROR"))
     page = send(ui())
     assert "MCP_ERROR" in page.error[0].value
     assert "[已隐藏]" in page.error[0].value
     assert TEST_KEY not in json.dumps(page.session_state["last_response"])
+    assert session_secret not in json.dumps(page.session_state["last_response"])
     assert metrics(page)["Error Code"] == "MCP_ERROR"
 
 

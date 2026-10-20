@@ -235,9 +235,14 @@ def test_business_gold_queries_use_actual_data_and_fixed_time(generated, monkeyp
     with sqlite3.connect(generated) as connection:
         results = {case["id"]: connection.execute(case["gold_sql"]).fetchall() for case in cases}
     import ast
+    user_tool = sql_agent.build_sql_tools("user_a")[2]
     for case in cases:
-        tool_rows = ast.literal_eval(sql_agent.safe_sql_query.invoke({"query": case["gold_sql"]}))
-        assert tool_rows == results[case["id"]]
+        scoped_query, params = sql_agent._scoped_query(case["gold_sql"], "user_a")
+        expected_scoped = sql_agent.execute_with_timeout(
+            sql_agent.add_limit(scoped_query), params=params,
+        )
+        tool_rows = ast.literal_eval(user_tool.invoke({"query": case["gold_sql"]}))
+        assert tool_rows == expected_scoped
     assert results["user_count"] == [(1000,)]
     assert results["product_count"] == [(200,)]
     assert results["order_count"] == [(10000,)]
@@ -271,13 +276,15 @@ def test_sql_evaluation_import_is_inert_and_mocked_run_uses_real_gold(generated,
     report_path = tmp_path / "reports" / "sql.json"
     report = sql_answers.evaluate(
         db_path=generated, report_file=report_path,
-        safe_tool=sql_agent.safe_sql_query, answer_function=fake_answer,
+        safe_tool=sql_agent.build_sql_tools("user_a")[2], answer_function=fake_answer,
     )
     assert len(calls) == len(report["cases"]) == 16
     assert report["dataset"]["seed"] == 42
     assert report_path.exists()
     assert all(case["answer_correct"] is None and case["error"] is None for case in report["cases"])
-    assert {case["id"]: case["gold_result"] for case in report["cases"]}["order_count"] == 10000
+    assert {case["id"]: case["gold_result"] for case in report["cases"]}["order_count"] == sum(
+        row[1] == 1 for row in demo.generate_dataset()["orders"]
+    )
 
 
 def test_sql_evaluation_rejects_wrong_time_window_before_running_gold_or_model(generated, tmp_path):
@@ -309,13 +316,16 @@ def test_recent_order_count_and_explicit_status_filter_have_distinct_real_result
     monkeypatch.setattr(sql_agent, "DB_FILE", str(generated))
     monkeypatch.setattr(sql_agent, "audit_log", lambda *args, **kwargs: None)
     period = "created_at >= '2026-09-02' AND created_at < '2026-10-02'"
+    user_tool = sql_agent.build_sql_tools("user_a")[2]
     def count(condition):
-        output = sql_agent.safe_sql_query.invoke({"query": f"SELECT COUNT(*) FROM orders WHERE {condition}"})
+        output = user_tool.invoke({"query": f"SELECT COUNT(*) FROM orders WHERE {condition}"})
         return ast.literal_eval(output)[0][0]
     all_statuses = count(period)
     non_cancelled = count(period + " AND status != 'cancelled'")
     cancelled = count(period + " AND status = 'cancelled'")
-    assert all_statuses == 3371
-    assert non_cancelled == 2869
-    assert cancelled == 502
+    user_a_orders = [row for row in demo.generate_dataset()["orders"] if row[1] == 1]
+    user_a_recent = [row for row in user_a_orders if "2026-09-02" <= row[4][:10] < "2026-10-02"]
+    assert all_statuses == len(user_a_recent)
+    assert non_cancelled == sum(row[5] != "cancelled" for row in user_a_recent)
+    assert cancelled == sum(row[5] == "cancelled" for row in user_a_recent)
     assert all_statuses == non_cancelled + cancelled

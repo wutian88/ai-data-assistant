@@ -8,6 +8,7 @@ from langgraph.graph import END, START, StateGraph
 from app.workflow.router import route_question_with_usage
 from app.mcp.client import call_mcp_tool, get_error_code
 from app.core.observability import extract_usage, empty_service_usage
+from app.core.config import MCP_TIMEOUT_SECONDS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -16,8 +17,6 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-# SQL Agent 本身可能包含多轮模型 / Tool 调用，30 秒容易误伤。
-MCP_TIMEOUT_SECONDS = 45
 RECURSION_LIMIT = 20
 
 RouteName = Literal["rag", "sql", "fallback"]
@@ -26,6 +25,8 @@ RouteName = Literal["rag", "sql", "fallback"]
 class AppState(TypedDict):
     request_id: str
     question: str
+    # Added only by trusted HTTP/session auth; never populated from the model.
+    user_id: str | None
 
     route: RouteName | None
     answer: str
@@ -194,10 +195,24 @@ async def sql_node(state: AppState) -> dict[str, Any]:
         request_id,
     )
 
+    if state.get("user_id") not in {"user_a", "user_b"}:
+        logger.info(
+            "[%s] sql_node end | status=error | error_code=SQL_IDENTITY_REQUIRED",
+            request_id,
+        )
+        return {
+            "answer": "该数据库查询需要有效的 Session Key。知识库问题仍可匿名查询。",
+            "sources": [],
+            "error": "SQL_IDENTITY_REQUIRED: 私有业务数据查询需要有效的 Session Key",
+            "error_code": "SQL_IDENTITY_REQUIRED",
+            **empty_service_usage(),
+        }
+
     try:
         result = await call_mcp_tool(
             "business_query",
             state["question"],
+            authenticated_user_id=state.get("user_id"),
         )
 
         token_data = extract_usage(

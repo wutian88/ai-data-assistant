@@ -173,13 +173,15 @@ def test_rag_regression_never_starts_milvus(offline_env, offline_data_dir):
 
 
 def test_real_sql_success_and_blocked_audit_are_kept_in_temporary_data(offline_data_dir):
-    from app.services.sql_agent import safe_sql_query
+    from app.services.sql_agent import build_sql_tools, safe_sql_query
 
     audit = offline_data_dir / "sql_audit.log"
     before = audit.read_text(encoding="utf-8") if audit.exists() else ""
-    success = safe_sql_query.invoke({"query": "SELECT COUNT(*) FROM users"})
+    anonymous = safe_sql_query.invoke({"query": "SELECT COUNT(*) FROM users"})
+    success = build_sql_tools("user_a")[2].invoke({"query": "SELECT COUNT(*) FROM users"})
     blocked = safe_sql_query.invoke({"query": "DELETE FROM users"})
-    assert success == "[(1000,)]"
+    assert anonymous.startswith("SQL校验失败：SQL_IDENTITY_REQUIRED")
+    assert success == "[(1,)]"
     assert blocked.startswith("SQL校验失败")
     entries = audit.read_text(encoding="utf-8")[len(before):]
     assert "status=success" in entries and "COUNT(*) FROM users" in entries

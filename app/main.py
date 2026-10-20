@@ -35,7 +35,12 @@ from app.workflow.graph import (
 )
 
 
-from app.api.sessions import create_session_router, session_lifespan
+from app.api.sessions import (
+    _build_initial_state,
+    create_session_router,
+    optional_authenticated_user,
+    session_lifespan,
+)
 from app.api.streaming import create_streaming_router
 from app.core.observability import build_observed_request_usage
 from app.core.paths import PROJECT_ROOT, ENV_PATH, SHOP_DB
@@ -45,6 +50,8 @@ from app.core.config import (
     APP_API_KEY,
 
     CONCURRENCY_WAIT_SECONDS,
+
+    END_TO_END_TIMEOUT_SECONDS,
 
     MAX_CONCURRENT_REQUESTS,
 
@@ -164,6 +171,16 @@ def verify_api_key(
 
 
     return api_key
+
+
+async def with_request_timeout(awaitable):
+    try:
+        return await asyncio.wait_for(
+            awaitable,
+            timeout=END_TO_END_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="END_TO_END_TIMEOUT") from exc
 
 
 async def limit_concurrency():
@@ -779,6 +796,8 @@ async def ask(
 
     request: Request,
 
+    user_id: str | None = Depends(optional_authenticated_user),
+
     _: None = Depends(limit_rate),
 
     __: None = Depends(limit_concurrency),
@@ -808,56 +827,11 @@ async def ask(
     # --------------------------------------------------------
 
 
-    result = await workflow.ainvoke(
-
-        {
-
-            "request_id": request_id,
-
-            "question": body.question,
-
-
-            "route": None,
-
-            "answer": "",
-
-            "sources": [],
-
-
-            "error": None,
-
-            "error_code": None,
-
-
-            "router_input_tokens": None,
-
-            "router_output_tokens": None,
-
-            "router_total_tokens": None,
-
-            "router_reasoning_tokens": None,
-
-
-            "service_input_tokens": None,
-
-            "service_output_tokens": None,
-
-            "service_total_tokens": None,
-
-            "service_reasoning_tokens": None,
-
-        },
-
-        config={
-
-            "recursion_limit": (
-
-                RECURSION_LIMIT
-
-            )
-
-        },
-
+    result = await with_request_timeout(
+        workflow.ainvoke(
+            _build_initial_state(body.question, request_id, user_id),
+            config={"recursion_limit": RECURSION_LIMIT},
+        )
     )
 
 

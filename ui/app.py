@@ -39,15 +39,28 @@ def api_endpoint(base_url: str) -> str:
     return value.rstrip("/") + "/ask"
 
 
-def redact(value, api_key: str):
+def redact(value, *credentials: str):
     """Keep credentials out of saved responses and displayed API errors."""
     if isinstance(value, str):
-        return value.replace(api_key, "[已隐藏]") if api_key else value
+        for credential in credentials:
+            if credential:
+                value = value.replace(credential, "[已隐藏]")
+        return value
     if isinstance(value, list):
-        return [redact(item, api_key) for item in value]
+        return [redact(item, *credentials) for item in value]
     if isinstance(value, dict):
-        return {name: redact(item, api_key) for name, item in value.items()}
+        return {name: redact(item, *credentials) for name, item in value.items()}
     return value
+
+
+def configured_session_key(user_id: str) -> str:
+    """Read the selected demo identity's configured key, with pairwise legacy fallback."""
+    key_a = os.getenv("SESSION_USER_A_KEY")
+    key_b = os.getenv("SESSION_USER_B_KEY")
+    if key_a is None and key_b is None:
+        key_a = os.getenv("DAY19_USER_A_KEY")
+        key_b = os.getenv("DAY19_USER_B_KEY")
+    return (key_a if user_id == "user_a" else key_b) or ""
 
 
 def error_detail(payload: dict) -> str:
@@ -68,12 +81,13 @@ def set_error(message: str, code: str) -> None:
     st.session_state["last_error_code"] = code
 
 
-def submit_question(base_url: str, api_key: str, question: str) -> None:
+def submit_question(base_url: str, api_key: str, user_id: str, question: str) -> None:
     for name in ("last_response", "last_error", "last_error_code", "last_elapsed", "last_request_id"):
         st.session_state.pop(name, None)
 
     question = question.strip()
     api_key = api_key.strip()
+    session_key = configured_session_key(user_id).strip()
     if not question:
         set_error("请输入问题。", "INVALID_INPUT")
         return
@@ -82,6 +96,12 @@ def submit_question(base_url: str, api_key: str, question: str) -> None:
         return
     if not api_key:
         set_error("请在侧栏填写 API Key，或在根目录 .env 配置 APP_API_KEY。", "NO_CREDENTIALS")
+        return
+    if not session_key:
+        set_error(
+            f"请在根目录 .env 配置 {user_id.upper()} 对应的 Session Key。",
+            "NO_SESSION_CREDENTIALS",
+        )
         return
     try:
         endpoint = api_endpoint(base_url)
@@ -94,7 +114,7 @@ def submit_question(base_url: str, api_key: str, question: str) -> None:
         response = httpx.post(
             endpoint,
             json={"question": question},
-            headers={"X-API-Key": api_key},
+            headers={"X-API-Key": api_key, "X-Session-Key": session_key},
             timeout=REQUEST_TIMEOUT_SECONDS,
             follow_redirects=False,
         )
@@ -109,7 +129,7 @@ def submit_question(base_url: str, api_key: str, question: str) -> None:
         st.session_state["last_elapsed"] = time.perf_counter() - start
 
     st.session_state["last_request_id"] = redact(
-        response.headers.get("X-Request-ID", "未知"), api_key
+        response.headers.get("X-Request-ID", "未知"), api_key, session_key
     )
     try:
         payload = response.json()
@@ -119,11 +139,11 @@ def submit_question(base_url: str, api_key: str, question: str) -> None:
     if not isinstance(payload, dict):
         set_error("API 响应格式不符合预期（需要 JSON 对象）。", "INVALID_RESPONSE")
         return
-    payload = redact(payload, api_key)
+    payload = redact(payload, api_key, session_key)
 
     if not response.is_success:
         messages = {
-            401: "鉴权失败，请检查 API Key。",
+            401: "鉴权失败，请检查 API Key 或 Session Key。",
             422: "问题格式不符合 API 要求。",
             429: "请求过于频繁或服务繁忙。",
         }
@@ -132,7 +152,7 @@ def submit_question(base_url: str, api_key: str, question: str) -> None:
         if detail:
             message += f" {detail}"
         if response.status_code == 429:
-            retry_after = redact(response.headers.get("Retry-After", ""), api_key)
+            retry_after = redact(response.headers.get("Retry-After", ""), api_key, session_key)
             if retry_after:
                 message += f" 建议在 {retry_after} 秒后手动重试。"
         set_error(f"HTTP {response.status_code}：{message}", f"HTTP_{response.status_code}")
@@ -170,6 +190,9 @@ with st.sidebar:
     api_key = st.text_input(
         "API Key", value=os.getenv("APP_API_KEY", ""), type="password", key="api_key",
     )
+    demo_user_id = st.selectbox(
+        "Session 身份", options=["user_a", "user_b"], index=0, key="demo_user_id",
+    )
 
 st.caption("示例：北京用户有多少？ · 最近 30 天订单量是多少？ · 公司的退款规则是什么？")
 with st.form("question_form"):
@@ -178,7 +201,7 @@ with st.form("question_form"):
 
 if submitted:
     with st.spinner("正在查询…"):
-        submit_question(base_url, api_key, question)
+        submit_question(base_url, api_key, demo_user_id, question)
 
 payload = st.session_state.get("last_response")
 if st.session_state.get("last_error"):
