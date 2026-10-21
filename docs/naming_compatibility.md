@@ -17,6 +17,6 @@ python -B -m scripts.run_regression
 git diff --check
 ```
 
-最终全量为 `125 passed, 2 warnings in 51.31s`；独立回归 8 个模块全部通过。总数中含 15 项命名兼容测试、13 项 SSE 测试。检查包括无效的新凭据不会回退、旧配置可用、新配置整对优先、既有文件内容保留、marker 不跨库代次误用，以及归属库和 checkpoint 成对选择、混合不完整布局拒绝启动。
+**历史验证记录（2026-10-15，阶段 A 合并前）：** 该次全量为 `125 passed, 2 warnings in 51.31s`；独立回归 8 个模块全部通过。总数中含 15 项命名兼容测试、13 项 SSE 测试。检查包括无效的新凭据不会回退、旧配置可用、新配置整对优先、既有文件内容保留、marker 不跨库代次误用，以及归属库和 checkpoint 成对选择、混合不完整布局拒绝启动。125 是当时的历史总数，不代表当前 main；阶段 A 功能验收快照见 [README 测试记录](../README.md#9-testing)。
 
-本轮没有推送或核验远程 GitHub Actions。README 不再沿用“尚未 commit”描述，远程结果以 Actions 页面为准。
+本轮（2026-10-15）没有推送或核验远程 GitHub Actions。README 不再沿用“尚未 commit”描述；该次远程结果以当时的 Actions 页面为准。

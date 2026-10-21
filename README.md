@@ -136,11 +136,11 @@ SQL 审计保留 success/blocked/timeout/failed 与 SQL 文本，目前写入工
 | Thread 隔离 | 服务端生成 `thread_id`；访问前核对所有者，避免跨用户读取/执行 |
 | 并发 | 进程内 semaphore；同一 thread 还有写锁 |
 | Rate Limit | 按应用 API Key 的哈希分桶，不直接以真实 Key 作为字典键 |
-| SQL 权限 | 工具级 AST/allowlist/只读/行数/超时检查 |
+| SQL 权限 | 工具级 AST/allowlist/只读/行数/超时检查；原始 AST 校验后由服务端按绑定参数注入 `users.id`、`orders.user_id` 归属条件，仅覆盖这两张表，不是通用租户权限 |
 | RAG 防护 | 将检索资料作为数据处理，测试覆盖已知注入场景 |
 | 配置保护 | 根目录 `.env` 及运行数据库不提交，也不复制进镜像 |
 
-Streamlit 从环境变量或根 `.env` 读取 Key，也可使用密码输入框；不把凭证写入请求 URL。保存和展示响应前会脱敏，不展示可能含凭证的网络异常字符串，不自动重试产生模型费用的请求。
+Streamlit 从环境变量或根 `.env` 读取 Key，也可使用密码输入框；不把凭证写入请求 URL。保存和展示响应前会脱敏，不展示可能含凭证的网络异常字符串；客户端不会自动重发整个 HTTP 请求。服务端仅在模型调用层对可重试的暂时性错误做有限重试：默认端到端 90 秒、单次模型调用 20 秒、最多 2 次尝试（含首次，即最多重试 1 次），SDK 内置重试关闭；MCP 与 SQL 不重试。
 
 ## 8. Observability
 
@@ -186,7 +186,9 @@ pytest 和 regression 使用测试专用隔离：无效测试凭证、项目外�
 
 96 是 pytest 用例数量，不是所有原脚本内部断言的总数，也不是模型正确率。
 
-2026-10-15 更新：SSE 与命名兼容改造后，本地 `python -B -m pytest -q -p no:cacheprovider` 为 **125 passed, 2 warnings in 51.31s**，独立八模块回归 8/8 通过。125 包含原有 97 项、13 项 SSE 检查及 15 项命名兼容检查；8 个回归包装已包含在总数中。两个警告来自现有依赖弃用提示。真实模型评测未运行；本机 SSE 验证使用阻断外部网络的 Mock 图。
+**历史验证记录（2026-10-15，行级权限与有限重试合并前）：** SSE 与命名兼容改造后，本地 `python -B -m pytest -q -p no:cacheprovider` 为 **125 passed, 2 warnings in 51.31s**，独立八模块回归 8/8 通过。该次 125 项包含原有 97 项、13 项 SSE 检查及 15 项命名兼容检查；8 个回归包装已包含在总数中。两个警告来自现有依赖弃用提示。真实模型评测未运行；本机 SSE 验证使用阻断外部网络的 Mock 图。此数字是当时的历史结果，不是当前 main 的总数。
+
+**行级权限与有限重试功能验收快照（2026-10-21）：** 快进合并到 `main` 的验收提交为 `6130e401ec623102bc7af1ec552ec62011e03062`。该提交上的本地 pytest 为 **138 passed, 2 warnings in 49.25s**（在此前 125 项上新增 13 项）；独立八模块回归 8/8 通过，`git diff --check` 通过。GitHub Actions [run #6](https://github.com/wutian88/ai-data-assistant/actions/runs/39533548061) 对应此功能验收提交并成功。8 个回归包装用例已包含在 138 项内。这是功能验收快照，不表示后续文档提交后的最新 HEAD。
 
 GitHub Actions 在 push、pull request 或手动触发时使用 Python 3.13，分别执行依赖安装、pytest、8 模块 regression；checkout/setup-python 固定版本 SHA，权限为 `contents: read`。2026-10-15 将 SSE 与命名兼容改造快进推送到 `main` 后，远程 `Offline regression` 已成功完成；远程状态仍以工作流运行页面和上方 badge 为准。历史本地验证记录不能代替远程执行结果。
 
@@ -425,6 +427,7 @@ README.md
 
 - SQLite、Milvus Lite 和当前数据规模适合单机原型；没有独立数据库服务、分布式索引或多副本协调。
 - Session Key 只演示两个固定身份，未接注册、登录、JWT 或凭证轮换；checkpoint 保存最新状态，不自动组成多轮聊天历史。
+- 行级权限只对 `users.id` 和 `orders.user_id` 注入服务端归属条件；`products` 等公共表不按用户过滤，也不构成通用租户权限。
 - 限流和并发位于单进程内存，重启会重置，不能跨多 worker/副本共享；限流按应用 Key 而非独立 Session 用户分桶。
 - `/health/ready` 只检查 SQLite 和配置存在，不实际验证 Embedding、LLM 可用性或 Milvus 检索；完整链路仍需要真实请求验收。
 - SQL AST 规则采用默认拒绝，受限语法不等于完整 SQLite 沙箱；审计仍需单独考虑脱敏、权限、持久化和保留期限。
@@ -433,7 +436,7 @@ README.md
 - 固定日期使数据可复现，不能把“最近 30 天”解释成运行当天；当前价格估算不能冒充历史交易收入。
 - Token usage 是可观测子集，缺失部分保持未知，不用于直接核对账单。
 - API 与工具 metadata 使用项目名，旧配置及数据文件名保留兼容读取；核心直接依赖已固定，但未完整锁定所有传递依赖。
-- 本轮未核验远程 CI 结果，需到 Actions 页面确认；本地测试通过不能代替远程执行。
+- CI 使用离线 Mock 和隔离数据，不验证真实模型回答质量或供应商可用性；真实模型评测需通过 `evals/` 单独执行。
 ## Demo
 
 ### SQL Query
