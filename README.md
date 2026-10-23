@@ -72,13 +72,16 @@ Streamlit 不 import 后端 workflow 或 service。FastAPI 使用 `app.main:app`
 | --- | --- | --- |
 | `GET /health/live` | 无 | 检查 Web 进程存活 |
 | `GET /health/ready` | 无 | 检查 SQLite 可读、模型凭证配置存在 |
-| `POST /ask` | `X-API-Key` | 单次问答，不保存 Session checkpoint |
+| `POST /ask` | `X-API-Key`；SQL 分支另需有效 `X-Session-Key` | 单次问答，不保存 Session checkpoint |
+| `POST /ask/stream` | `X-API-Key`；SQL 分支另需有效 `X-Session-Key` | SSE 阶段状态和最终答案分块，不保存 Session checkpoint |
 | `POST /threads` | 两种 Key | 创建用户所属 thread，返回 201 |
 | `GET /threads/{thread_id}` | 两种 Key | 读取该用户最新 thread 状态 |
 | `POST /threads/{thread_id}/ask` | 两种 Key | 执行隔离问答并写入 checkpoint |
 | `GET /rate-limit-test` | `X-API-Key` | 限流验证接口 |
 
 问题去掉首尾空白后不能为空，最长 1,000 字符。鉴权失败返回 401；未知 thread 或其他用户的 thread 返回 404；限流/并发槽位不足返回 429。业务失败也可能以 HTTP 200 返回 `error` 和 `error_code`，客户端应同时检查。
+
+`/ask` 与 `/ask/stream` 的 RAG 分支可以不带 Session Key，但仍需应用 API Key。SQL 分支统一要求服务端可解析的身份，包括仅查询公共 `products` 表的 HTTP 请求；缺少 Session Key 时，SQL 节点返回 `SQL_IDENTITY_REQUIRED`（`/ask` 为 JSON 业务错误，SSE 为流内 `error` 事件）。显式提供无效 Session Key 会在进入图之前返回 401，Session 凭证配置缺失或重复时返回 503。`/threads` 接口始终要求两种 Key，并检查 thread 归属。
 
 ## 5. RAG Pipeline
 
@@ -238,7 +241,7 @@ data: {"error_code":"MCP_TIMEOUT","request_id":"..."}
 
 响应存活期间保留并发名额。客户端断开会取消图消费、关闭迭代器，并由原并发依赖的 `finally` 释放名额；这不保证厂商立即停止计算或计费。日志分别记录连接、首个 status、首个 delta 和结束时间，不记录明文凭据。当前保护仍仅单进程有效。
 
-当前没有专用的总流时限或发送超时，慢客户端可能长时间占用名额；MCP 工具调用超时不能代替流发送时限。`/threads` 暂无流式接口，Streamlit 仍使用 `/ask`，本轮演示通过 curl；真实 MCP 子进程在客户端断开时的清理未做专项实测。
+`answer_events` 已通过 `asyncio.timeout` 对图计算和 SSE 迭代施加应用等待预算，由 `END_TO_END_TIMEOUT_SECONDS` 配置，默认 90 秒；超时以 `END_TO_END_TIMEOUT` 错误事件结束。该预算不能等同于每次网络发送、屏蔽取消的清理过程或上游实际计算的硬截止时间。当前没有单独设置每次 `send` 和 shield 清理的超时；慢客户端、代理和真实 MCP 子进程取消边界尚未专项实测，仍可能延长名额占用。MCP 工具调用的 45 秒超时不能代替这些发送与清理限制。`/threads` 暂无流式接口，Streamlit 仍使用 `/ask`，本轮演示通过 curl。
 
 零模型费用的本机演示（假凭据、临时数据、阻断外部网络；服务默认 60 秒后退出）：
 
@@ -326,7 +329,7 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 python -m streamlit run ui/app.py --server.address 127.0.0.1 --browser.gatherUsageStats false
 ```
 
-打开 `http://127.0.0.1:8501`，侧栏确认 API Base URL 和 API Key，输入问题后发送。UI 当前使用 `/ask` 单次问答，不要求 Session Key；Thread API 仍可通过 `/docs` 单独演示。
+打开 `http://127.0.0.1:8501`，侧栏确认 API Base URL、API Key 和 Session 身份（默认 `user_a`，可切换 `user_b`），输入问题后发送。根 `.env` 中需配置非空且不同的 `SESSION_USER_A_KEY`、`SESSION_USER_B_KEY`；UI 读取所选身份对应的 Key，并同时发送 `X-API-Key` 和 `X-Session-Key`。UI 当前使用 `/ask` 单次问答，缺少所选身份的 Session Key 时会在发送前提示配置错误，即使问题走 RAG 也不会发送。Thread API 仍可通过 `/docs` 单独演示。
 
 > Streamlit 截图待补：补充一次 SQL 和一次 RAG 查询的真实页面截图，保留 Route、Sources、Request ID、Token 与耗时，遮盖凭证后再添加到 README。
 
@@ -348,18 +351,20 @@ python -m streamlit run ui/app.py --server.address 127.0.0.1 --browser.gatherUsa
 
 ## 12. Example Questions
 
+以下 SQL 预期按当前身份的可见范围描述：`user_a` 映射 `users.id=1` / `orders.user_id=1`，`user_b` 映射对应的 `2`；`products` 为公共表。具体结果须按所选身份和当前初始化数据核对。第 9 节 2026-10-02 记录中的用户数 1,000、北京用户 116、近 30 天订单 3,371 是行级权限引入前的全库历史结果，不能作为当前 HTTP 用户的统一预期。
+
 | 问题 | 路由 / 预期 |
 | --- | --- |
-| 数据库一共有多少位用户？ | SQL，1,000 |
-| 北京用户有多少？ | SQL，116 |
-| 最近 30 天订单量是多少？ | SQL，3,371；固定观察日 2026-10-01，包含所有订单状态 |
-| 各城市用户数量分别是多少？ | SQL，按城市分组 |
-| 排除取消订单，各类商品销量分别是多少？ | SQL，按类别统计购买件数 |
-| 排除取消订单，按当前商品价格估算，订单金额最高的商品是什么？ | SQL，当前价格估算，非历史成交额 |
+| 数据库一共有多少位用户？ | SQL，仅统计当前身份可见的用户 |
+| 北京用户有多少？ | SQL，仅统计当前身份可见且城市为北京的用户 |
+| 最近 30 天订单量是多少？ | SQL，仅统计当前身份的订单；固定观察日 2026-10-01，包含所有订单状态 |
+| 各城市用户数量分别是多少？ | SQL，对当前身份可见的用户按城市分组 |
+| 排除取消订单，各类商品销量分别是多少？ | SQL，按当前身份的订单关联商品类别，统计购买件数 |
+| 排除取消订单，按当前商品价格估算，订单金额最高的商品是什么？ | SQL，按当前身份的订单与公共商品价格估算，非历史成交额 |
 | 公司的退款规则是什么？ | RAG，来源包含“售后规则” |
 | 公司支持哪些支付方式？ | RAG，支付规则 |
 
-可直接在 Streamlit 或 `/docs` 中发送。Swagger 的 Authorize 使用 `X-API-Key`；Session 演示额外设置 `X-Session-Key`，创建 thread 后使用服务端返回的 ID。
+可直接在 Streamlit 或 `/docs` 中发送。Streamlit 按侧栏所选身份自动附带两种 Key；Swagger 的 Authorize 中配置应用 `X-API-Key`，查询 SQL 或演示 Thread API 时还须配置所选演示身份的 `X-Session-Key`。RAG HTTP 请求可不带 Session Key，但显式提供的 Key 必须有效。创建 thread 后使用服务端返回的 ID，不能替换为其他用户的 thread。
 
 ## 13. Project Structure
 
